@@ -4,9 +4,9 @@
 
 This image will execute [wktmltoimage](https://wkhtmltopdf.org) to render an html page specified by an URL to a jpg image and then upload that image to s3.
 
-Current version only supports rendering to jpg images.  Stay tuned for a future release that also supports rendering to PDF.
+Note: The current version only supports rendering to jpg images.  Stay tuned for a future release that also supports rendering to PDF.
 
-wkhtmltopdf 0.12.4 + aws-sdk 2.48.0 + node 4.8.2
+`wkhtmltopdf 0.12.4 + aws-sdk 2.48.0 + node 4.8.2`
 
 ## How to use
 
