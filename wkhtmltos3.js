@@ -1,3 +1,6 @@
+// TODO: support pdf in addition to image (see: https://www.npmjs.com/package/wkhtmltox)
+
+
 const wkhtmltoimage = require('wkhtmltoimage')
 const fs = require('fs-extra')
 const AWS = require('aws-sdk')
@@ -56,7 +59,7 @@ const optionDefinitions = [
 
 // validations
 const options = commandLineArgs(optionDefinitions)
-if (options.help) {
+if (options.help || process.argv.length === 2) {
   console.log(helpDoc)
   process.exit()
 }
