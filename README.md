@@ -1,4 +1,4 @@
-## Supported tags and respective `Dockerfile` links
+### Supported tags and respective `Dockerfile` links
 
 + [`0.12.4`,`latest` (0.12.4/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/0.12.4/Dockerfile)
 
@@ -6,9 +6,9 @@ This image will execute [wktmltoimage](https://wkhtmltopdf.org) to render an htm
 
 Note: The current version only supports rendering to jpg images.  Stay tuned for a future release that also supports rendering to PDF.
 
-`wkhtmltopdf/wkhtmltoimage 0.12.4 + aws-sdk 2.48.0 + node 4.8.2`
+`wkhtmltopdf/wkhtmltoimage 0.12.4 + aws-sdk 2.48.0 + imagemagick 8:6.8.9.9-5+deb8u8 + node 6.10.2`
 
-## How to use
+### How to use
 
 The wkhtmltos3 image was originally developed to be invoked as an Amazon EC2 Container Service task that when invoked performs the process of rendering one html page into a jpg image that is stored to s3 and then exits.  However, it can be used in other contexts too.
 
@@ -58,18 +58,17 @@ Failure to STDERR (non-verbose):
 wkhtmltos3: fail upload: http://some.com/retailers/123/users/12345/profile.html => s3:NON-EXISTENT-bucket:123/profile12345.jpg (error = NoSuchBucket: The specified bucket does not exist)
 ```
 
-## Config: env vars and options
+### Config: env vars and options
 
 The configuration environment variables and command line options can be displayed with the `-h` or `--help` options:
 
 ```
-$ docker run --rm danlynn/wkhtmltos3 -h
-
 NAME
    wkhtmltos3 - Use webkit to convert html page to image on s3
 
 SYNOPSIS
    wkhtmltos3 -b bucket -k key -e expiresDays
+              [--trim] [--width] [--height]
               [--accessKeyId] [--secretAccessKey]
               [-V verbose] url
 
@@ -84,6 +83,15 @@ DESCRIPTION
            key in amazon s3 bucket
    -e, --expiresDays
            number of days after which s3 should delete the file
+   --trim
+           use imagemagick's trim command to automatically crop
+           whitespace from images since html pages always default
+           to 1024 wide and the height usually has some padding 
+           too
+   --width
+           explicitly set the width for wkhtmltoimage rendering
+   --height
+           explicitly set the height for wkhtmltoimage rendering
    --accessKeyId=ACCESS_KEY_ID
            Amazon accessKeyId that has access to bucket - if not
            provided then 'ACCESS_KEY_ID' env var will be used
@@ -92,9 +100,21 @@ DESCRIPTION
            not provided then 'SECRET_ACCESS_KEY' env var will be
            used
    -V, --verbose
-           provide verbose logging - if not provided then 
-           'VERBOSE' env var will be checked
+           provide verbose logging
    -h, --help
            display this help
 ```
 
+### Trimming and sizing jpg image
+
+wkhtmltopdf/wkhtmltopdf is great at rendering html pages to jpg images and PDF files.  However, since the source is an html page, it makes certain assumptions about the size of the page.  
+
+If the source of the page is something small like a coupon, you may be disappointed that the default rendering produces a 1024px wide image with a lot of padding on the right and probably some on the bottom.
+
+![non-trimmed coupon](https://github.com/danlynn/wkhtmltos3/raw/master/assets/no_trim.jpg "Non-trimmed Coupon")
+
+In order to correct for this common problem, the `--trim` option has been added.  The `--trim` option will use the [`-trim`](http://www.imagemagick.org/Usage/crop/#trim) feature of imagemagick to automagically crop extra whitespace from your rendered jpg image.
+
+![trimmed coupon](https://github.com/danlynn/wkhtmltos3/raw/master/assets/trim.jpg "Trimmed Coupon")
+
+However, if the automatic nature of this feature doesn't work for the types of html pages being rendered then you can explicitly specify `--width=<pixels>` and/or `--height=<pixels>` to set the page size used by wkhtmltoimage/wkhtmltopdf when rendering.
