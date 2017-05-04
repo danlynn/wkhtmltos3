@@ -120,6 +120,7 @@ wkhtmltoimage.generate(options.url, {output: imagepath}, function (code, signal)
           console.error(`  failed: error = ${error}\n`);
         else
           console.error(`wkhtmltos3: fail upload: ${options.url} => s3:${options.bucket}:${options.key} (error = ${error})`);
+        process.exit(1)
       }
       else {
         if (options.verbose)
@@ -134,5 +135,6 @@ wkhtmltoimage.generate(options.url, {output: imagepath}, function (code, signal)
       console.error(`  failed: code = ${code}\n`)
     else
       console.error(`wkhtmltos3: fail render: ${options.url} => s3:${options.bucket}:${options.key} (code = ${code})`);
+    process.exit(1)
   }
 });
