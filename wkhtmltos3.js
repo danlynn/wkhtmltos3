@@ -32,6 +32,8 @@ DESCRIPTION
            key in amazon s3 bucket
    -e, --expiresDays
            number of days after which s3 should delete the file
+   --format
+           image file format (default is jpg)
    --trim
            use imagemagick's trim command to automatically crop
            whitespace from images since html pages always default
@@ -70,6 +72,7 @@ function getOptions() {
     {name: 'bucket',          alias: 'b', type: String},
     {name: 'key',             alias: 'k', type: String},
     {name: 'expiresDays',     alias: 'e', type: Number},
+    {name: 'format',                      type: String},
     {name: 'trim',            alias: 't', type: Boolean},
     {name: 'width',                       type: Number},
     {name: 'height',                      type: Number},
@@ -185,6 +188,7 @@ function trim(imagepath, options, callback) {
  * is then optionally trimmed then uploaded to Amazon s3.
  *
  * @see https://www.npmjs.com/package/wkhtmltoimage
+ * @see http://madalgo.au.dk/~jakobt/wkhtmltoxdoc/wkhtmltoimage_0.10.0_rc2-doc.html
  *
  * @param options {Object} {bucket, key, expiresDays, accessKeyId, secretAccessKey, verbose, url}
  */
@@ -194,6 +198,7 @@ function renderPage(options) {
 wkhtmltos3:
   bucket:      ${options.bucket}
   key:         ${options.key}
+  format:      ${options.format || 'jpg'}
   expiresDays: ${options.expiresDays ? options.expiresDays : 'never'}
   url:         ${options.url}
 `)
@@ -207,13 +212,15 @@ wkhtmltos3:
       dimensions = ` (width: ${options.width})`
     if (options.height && !options.width)
       dimensions = ` (height: ${options.height})`
-    console.log(`  rendering jpg${dimensions}...`)
+    console.log(`  rendering${dimensions}...`)
   }
   let generateOptions = {output: imagepath}
   if (options.width)
     generateOptions.width = String(options.width)
   if (options.height)
     generateOptions.height = String(options.height)
+  if (options.format)
+    generateOptions.format = options.format
   wkhtmltoimage.generate(options.url, generateOptions, function (code, signal) {
     if (code === 0) {
       if (options.trim) {
