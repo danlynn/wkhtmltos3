@@ -199,10 +199,23 @@ wkhtmltos3:
 `)
   let imagepath = `/tmp/${options.key}`
   fs.mkdirsSync(path.dirname(imagepath))
-  if (options.verbose)
-    console.log('  rendering jpg...')
-  wkhtmltoimage.generate(options.url, {output: imagepath}, function (code, signal) {
-    if (code == 0) {
+  if (options.verbose) {
+    let dimensions = ''
+    if (options.width && options.height)
+      dimensions = ` (${options.width}x${options.height})`
+    if (options.width && !options.height)
+      dimensions = ` (width: ${options.width})`
+    if (options.height && !options.width)
+      dimensions = ` (height: ${options.height})`
+    console.log(`  rendering jpg${dimensions}...`)
+  }
+  let generateOptions = {output: imagepath}
+  if (options.width)
+    generateOptions.width = String(options.width)
+  if (options.height)
+    generateOptions.height = String(options.height)
+  wkhtmltoimage.generate(options.url, generateOptions, function (code, signal) {
+    if (code === 0) {
       if (options.trim) {
         trim(imagepath, options, function(imagepath, options) {
           uploadToS3(imagepath, options)
