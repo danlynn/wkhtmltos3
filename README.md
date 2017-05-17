@@ -20,10 +20,11 @@ $ docker run --rm -e ACCESS_KEY_ID=AKIA000NOTREALKEY000 -e SECRET_ACCESS_KEY=l2r
 wkhtmltos3:
   bucket:      my-unique-bucket
   key:         123/profile12345.jpg
+  format:      jpg
   expiresDays: 1
   url:         http://some.com/retailers/123/users/12345/profile.html
 
-  rendering jpg...
+  rendering...
   uploading 32.57k to s3...
   complete
 ```
@@ -60,7 +61,7 @@ wkhtmltos3: fail upload: http://some.com/retailers/123/users/12345/profile.html 
 
 ### Config: env vars and options
 
-The configuration environment variables and command line options can be displayed with the `-h` or `--help` options:
+The configuration environment variables and command line options can be displayed with the `-?` or `--help` options:
 
 ```
 NAME
@@ -83,11 +84,14 @@ DESCRIPTION
            key in amazon s3 bucket
    -e, --expiresDays
            number of days after which s3 should delete the file
+   --format
+           image file format (default is jpg)
    --trim
            use imagemagick's trim command to automatically crop
            whitespace from images since html pages always default
            to 1024 wide and the height usually has some padding 
            too
+           see: http://www.imagemagick.org/Usage/crop/#trim
    --width
            explicitly set the width for wkhtmltoimage rendering
    --height
@@ -99,11 +103,24 @@ DESCRIPTION
            Amazon secretAccessKey that has access to bucket - if
            not provided then 'SECRET_ACCESS_KEY' env var will be
            used
+   --wkhtmltoimage 
+           options (in json format) to be passed through directly to 
+           the wkhtmltoimage node module. These options are camel-cased 
+           versions of all the regular command-line options 
+           (eg: --options='{"zoom": 1.5}'). These options will 
+           merge into and override any of the regular options 
+           (like --width, --format=png, etc).
+           see: https://wkhtmltopdf.org/usage/wkhtmltopdf.txt
+   --url
+           optionally explicitly identify the url instead of just
+           tacking it on the end of the command-line options
    -V, --verbose
            provide verbose logging
-   -h, --help
+   -?, --help
            display this help
 ```
+
+In addition to these command-line options, options specific to the wkhtmltoimage node package may be passed directly through via the --wkhtmltoimage command-line option.  (see: [https://wkhtmltopdf.org/usage/wkhtmltopdf.txt](https://wkhtmltopdf.org/usage/wkhtmltopdf.txt))
 
 ### Trimming and sizing jpg image
 
@@ -118,3 +135,38 @@ In order to correct for this common problem, the `--trim` option has been added.
 ![trimmed coupon](https://github.com/danlynn/wkhtmltos3/raw/master/assets/trim.jpg "Trimmed Coupon")
 
 However, if the automatic nature of this feature doesn't work for the types of html pages being rendered then you can explicitly specify `--width=<pixels>` and/or `--height=<pixels>` to set the page size used by wkhtmltoimage/wkhtmltopdf when rendering.
+
+### How to contribute
+
+Check out the project from github at: [https://github.com/danlynn/wkhtmltos3](https://github.com/danlynn/wkhtmltos3)
+
+Make changes to the Dockerfile and build with:
+
+```bash
+$ docker build -t danlynn/wkhtmltos3:1.1.0 .
+```
+
+...replacing the tag (-t) value as needed.
+
+Launch the image and make interactive changes to the wkhtmltos3.js by mounting the current project directory in the container and opening a bash prompt via:
+
+```bash
+$ docker run --rm -it -v $(pwd):/myapp --entrypoint=/bin/bash -e ACCESS_KEY_ID= AKIA000NOTREALKEY000 -e SECRET_ACCESS_KEY= l2r+0000000NotRealSecretAccessKey0000000 danlynn/wkhtmltos3:1.1.0
+```
+
+Then from the bash prompt in the container, run the script with your modifications via:
+
+```bash
+root@684fc69c5877:/myapp$ node wkhtmltos3.js -V -b my-unique-bucket -k 123/profile12345.jpg -e 1 'http://some.com/retailers/123/users/12345/profile.html'
+
+wkhtmltos3:
+  bucket:      my-unique-bucket
+  key:         123/profile12345.jpg
+  format:      jpg
+  expiresDays: 1
+  url:         http://some.com/retailers/123/users/12345/profile.html
+
+  rendering...
+  uploading 32.57k to s3...
+  complete
+```

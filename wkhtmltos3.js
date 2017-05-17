@@ -39,6 +39,7 @@ DESCRIPTION
            whitespace from images since html pages always default
            to 1024 wide and the height usually has some padding 
            too
+           see: http://www.imagemagick.org/Usage/crop/#trim
    --width
            explicitly set the width for wkhtmltoimage rendering
    --height
@@ -50,9 +51,20 @@ DESCRIPTION
            Amazon secretAccessKey that has access to bucket - if
            not provided then 'SECRET_ACCESS_KEY' env var will be
            used
+   --wkhtmltoimage 
+           options (in json format) to be passed through directly to 
+           the wkhtmltoimage node module. These options are camel-cased 
+           versions of all the regular command-line options 
+           (eg: --options='{"zoom": 1.5}'). These options will 
+           merge into and override any of the regular options 
+           (like --width, --format=png, etc).
+           see: https://wkhtmltopdf.org/usage/wkhtmltopdf.txt
+   --url
+           optionally explicitly identify the url instead of just
+           tacking it on the end of the command-line options
    -V, --verbose
            provide verbose logging
-   -h, --help
+   -?, --help
            display this help
 `)
 }
@@ -79,7 +91,8 @@ function getOptions() {
     {name: 'accessKeyId',                 type: String},
     {name: 'secretAccessKey',             type: String},
     {name: 'verbose',         alias: 'V', type: Boolean},
-    {name: 'help',            alias: 'h', type: Boolean},
+    {name: 'help',            alias: '?', type: Boolean},
+    {name: 'wkhtmltoimage',               type: String},
     {name: 'url',                         type: String, defaultOption: true}
   ]
 
@@ -221,6 +234,18 @@ wkhtmltos3:
     generateOptions.height = String(options.height)
   if (options.format)
     generateOptions.format = options.format
+  if (options.wkhtmltoimage) {
+    try {
+      Object.assign(generateOptions, JSON.parse(options.wkhtmltoimage))
+    }
+    catch (e) {
+      if (options.verbose)
+        console.error(`  failed: unable to parse 'wkhtmltoimage' json: ${options.wkhtmltoimage}`)
+      else
+        console.error(`wkhtmltos3: fail render: unable to parse 'wkhtmltoimage' json: ${options.wkhtmltoimage}`);
+      process.exit(1)
+    }
+  }
   wkhtmltoimage.generate(options.url, generateOptions, function (code, signal) {
     if (code === 0) {
       if (options.trim) {
