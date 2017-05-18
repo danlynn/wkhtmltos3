@@ -2,7 +2,7 @@
 
 + [`1.0.0`,`latest` (1.0.0/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.0.0/Dockerfile)
 
-This image will execute [wktmltoimage](https://wkhtmltopdf.org) to render an html page specified by an URL to a jpg image and then upload that image to s3.
+This image will execute [wkhtmltoimage](https://wkhtmltopdf.org) to render an html page specified by an URL to a jpg image and then upload that image to s3.
 
 Note: The current version only supports rendering images.  Stay tuned for a future release that also supports rendering to PDF.
 
