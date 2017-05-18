@@ -4,7 +4,7 @@
 
 This image will execute [wktmltoimage](https://wkhtmltopdf.org) to render an html page specified by an URL to a jpg image and then upload that image to s3.
 
-Note: The current version only supports rendering to jpg images.  Stay tuned for a future release that also supports rendering to PDF.
+Note: The current version only supports rendering images.  Stay tuned for a future release that also supports rendering to PDF.
 
 `wkhtmltopdf/wkhtmltoimage 0.12.4 + aws-sdk 2.48.0 + imagemagick 8:6.8.9.9-5+deb8u8 + node 6.10.2`
 
@@ -172,7 +172,7 @@ See all wkhtmltopdf/wkhtmltoimage options on the wkhtmltopdf website.  Keep in m
 
 options reference: [https://wkhtmltopdf.org/usage/wkhtmltopdf.txt](https://wkhtmltopdf.org/usage/wkhtmltopdf.txt)
 
-node module reference: [https://www.npmjs.com/package/wkhtmltoimage](https://www.npmjs.com/package/wkhtmltoimage)
+node module: [https://www.npmjs.com/package/wkhtmltoimage](https://www.npmjs.com/package/wkhtmltoimage)
 
 #### --imagemagic options
 
@@ -202,6 +202,9 @@ Producing the following image:
 
 Note that the `--trim` option to wkhtmltos3 was simply merged into the other imagemagick options as `"-trim"`.
 
+imagemagick reference: [http://www.imagemagick.org/Usage/](http://www.imagemagick.org/Usage/)
+
+node module: [https://www.npmjs.com/package/imagemagick](https://www.npmjs.com/package/imagemagick)
 
 ### Font Handling
 
