@@ -17,9 +17,10 @@ NAME
 
 SYNOPSIS
    wkhtmltos3 -b bucket -k key -e expiresDays
-              [--trim] [--width] [--height]
+              [--format] [--trim] [--width] [--height]
               [--accessKeyId] [--secretAccessKey]
-              [-V verbose] url
+              [-V verbose] [--wkhtmltoimage]
+              [--imagemagick] url
 
 DESCRIPTION
    Convert html page specified by 'url' into a jpg image and
@@ -51,14 +52,20 @@ DESCRIPTION
            Amazon secretAccessKey that has access to bucket - if
            not provided then 'SECRET_ACCESS_KEY' env var will be
            used
-   --wkhtmltoimage 
+   --wkhtmltoimage
            options (in json format) to be passed through directly to 
            the wkhtmltoimage node module. These options are camel-cased 
            versions of all the regular command-line options 
-           (eg: --options='{"zoom": 1.5}'). These options will 
+           (eg: --wkhtmltoimage='{"zoom": 1.5}'). These options will 
            merge into and override any of the regular options 
-           (like --width, --format=png, etc).
+           (like --width=400, --format=png, etc).
            see: https://wkhtmltopdf.org/usage/wkhtmltopdf.txt
+   --imagemagick
+           options (in json array format) to be passed through directly
+           to the imagemagick node module. This is a highly flexible
+           way to perform additional image manipulation on the rendered
+           html page. (eg: --imagemagick='["-trim","-colorspace","Gray",
+           "-edge",1,"-negate"]')
    --url
            optionally explicitly identify the url instead of just
            tacking it on the end of the command-line options
@@ -93,11 +100,44 @@ function getOptions() {
     {name: 'verbose',         alias: 'V', type: Boolean},
     {name: 'help',            alias: '?', type: Boolean},
     {name: 'wkhtmltoimage',               type: String},
+    {name: 'imagemagick',                 type: String},
     {name: 'url',                         type: String, defaultOption: true}
   ]
 
-  // validations
+  // parse command-line args into options object
   const options = commandLineArgs(optionDefinitions)
+
+  // convert options.wkhtmltoimage from json string into Object instance
+  if (options.wkhtmltoimage) {
+    const origValue = options.wkhtmltoimage
+    try {
+      options.wkhtmltoimage = JSON.parse(options.wkhtmltoimage)
+    }
+    catch (e) {
+      console.error(`ERROR: could not parse --wkhtmltoimage json: ${origValue}`)
+      process.exit(1)
+    }
+  }
+
+  // convert options.imagemagick from json string into Array instance
+  if (options.imagemagick) {
+    const origValue = options.imagemagick
+    try {
+      options.imagemagick = JSON.parse(options.imagemagick)
+    }
+    catch (e) {
+      console.error(`ERROR: could not parse --imagemagick json: ${origValue}`)
+      process.exit(1)
+    }
+    if (!options.imagemagick instanceof Array) {
+      console.error(`ERROR: --imagemagick json must be an array: ${origValue}`)
+      process.exit(1)
+    }
+  }
+  else
+    options.imagemagick = []
+
+  // validations
   if (options.help || process.argv.length === 2) {
     displayHelpDoc()
     process.exit()
@@ -166,7 +206,8 @@ function uploadToS3(imagepath, options) {
 
 
 /**
- * Trim the file specified by 'imagePath' using imagemagick to remove
+ * Perform imagemagick convert command on the file specified by 'imagePath'
+ * with the specified 'options'.  The
  * extra whitespace around the image.
  *
  * @see http://www.imagemagick.org/Usage/crop/#trim
@@ -174,23 +215,23 @@ function uploadToS3(imagepath, options) {
  *
  * @param imagepath {string} path of image file to be trimmed
  * @param options {Object} {bucket, key, expiresDays, accessKeyId, secretAccessKey, verbose, url}
- * @param callback {function} invoked upon success passing (trimpath, options)
+ * @param callback {function} invoked upon success passing (destpath, options)
  */
-function trim(imagepath, options, callback) {
+function imagemagickConvert(imagepath, options, callback) {
   if (options.verbose)
-    console.log(`  trimming...`)
-  const trimpath = `/tmp/trimmed/${options.key}`
-  fs.mkdirsSync(path.dirname(trimpath))
-  imagemagick.convert([imagepath, '-trim', `${trimpath}`], function (error, stdout) {
+    console.log(`  imagemagick convert (${JSON.stringify(options.imagemagick)})...`)
+  const destpath = `/tmp/imagemagick/${options.key}`
+  fs.mkdirsSync(path.dirname(destpath))
+  imagemagick.convert([imagepath].concat(options.imagemagick, destpath), function (error, stdout) {
     if (error) {
       if (options.verbose)
         console.error(`  failed: error = ${error.message}\n`)
       else
-        console.error(`wkhtmltos3: fail trim: ${options.url} => s3:${options.bucket}:${options.key} (error = ${error.message})`);
+        console.error(`wkhtmltos3: fail imagemagick convert: ${options.url} => s3:${options.bucket}:${options.key} (error = ${error.message})`);
       process.exit(1)
     }
     else {
-      callback(trimpath, options)
+      callback(destpath, options)
     }
   })
 }
@@ -217,39 +258,24 @@ wkhtmltos3:
 `)
   let imagepath = `/tmp/${options.key}`
   fs.mkdirsSync(path.dirname(imagepath))
-  if (options.verbose) {
-    let dimensions = ''
-    if (options.width && options.height)
-      dimensions = ` (${options.width}x${options.height})`
-    if (options.width && !options.height)
-      dimensions = ` (width: ${options.width})`
-    if (options.height && !options.width)
-      dimensions = ` (height: ${options.height})`
-    console.log(`  rendering${dimensions}...`)
-  }
-  let generateOptions = {output: imagepath}
+  let generateOptions = {}
   if (options.width)
     generateOptions.width = String(options.width)
   if (options.height)
     generateOptions.height = String(options.height)
   if (options.format)
     generateOptions.format = options.format
-  if (options.wkhtmltoimage) {
-    try {
-      Object.assign(generateOptions, JSON.parse(options.wkhtmltoimage))
-    }
-    catch (e) {
-      if (options.verbose)
-        console.error(`  failed: unable to parse 'wkhtmltoimage' json: ${options.wkhtmltoimage}`)
-      else
-        console.error(`wkhtmltos3: fail render: unable to parse 'wkhtmltoimage' json: ${options.wkhtmltoimage}`);
-      process.exit(1)
-    }
-  }
+  if (options.wkhtmltoimage)
+    Object.assign(generateOptions, options.wkhtmltoimage)
+  if (options.verbose)
+    console.log(`  wkhtmltoimage generate (${JSON.stringify(generateOptions)})...`)
+  Object.assign(generateOptions, {output: imagepath})
   wkhtmltoimage.generate(options.url, generateOptions, function (code, signal) {
     if (code === 0) {
-      if (options.trim) {
-        trim(imagepath, options, function(imagepath, options) {
+      if (options.trim)
+        options.imagemagick = ['-trim'].concat(options.imagemagick)
+      if (options.imagemagick.length > 0) {
+        imagemagickConvert(imagepath, options, function(imagepath, options) {
           uploadToS3(imagepath, options)
         })
       }

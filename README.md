@@ -24,7 +24,8 @@ wkhtmltos3:
   expiresDays: 1
   url:         http://some.com/retailers/123/users/12345/profile.html
 
-  rendering...
+  wkhtmltoimage generate ({})...
+  imagemagick convert ([])...
   uploading 32.57k to s3...
   complete
 ```
@@ -41,6 +42,8 @@ wkhtmltos3:
   url:         http://some.com/retailers/123/users/12345/profile.html
 
   rendering jpg...
+  wkhtmltoimage generate ({})...
+  imagemagick convert ([])...
   uploading 32.57k to s3...
   complete
 ```
@@ -69,9 +72,10 @@ NAME
 
 SYNOPSIS
    wkhtmltos3 -b bucket -k key -e expiresDays
-              [--trim] [--width] [--height]
+              [--format] [--trim] [--width] [--height]
               [--accessKeyId] [--secretAccessKey]
-              [-V verbose] url
+              [-V verbose] [--wkhtmltoimage]
+              [--imagemagick] url
 
 DESCRIPTION
    Convert html page specified by 'url' into a jpg image and
@@ -103,14 +107,20 @@ DESCRIPTION
            Amazon secretAccessKey that has access to bucket - if
            not provided then 'SECRET_ACCESS_KEY' env var will be
            used
-   --wkhtmltoimage 
+   --wkhtmltoimage
            options (in json format) to be passed through directly to 
            the wkhtmltoimage node module. These options are camel-cased 
            versions of all the regular command-line options 
-           (eg: --options='{"zoom": 1.5}'). These options will 
+           (eg: --wkhtmltoimage='{"zoom": 1.5}'). These options will 
            merge into and override any of the regular options 
-           (like --width, --format=png, etc).
+           (like --width=400, --format=png, etc).
            see: https://wkhtmltopdf.org/usage/wkhtmltopdf.txt
+   --imagemagick
+           options (in json array format) to be passed through directly
+           to the imagemagick node module. This is a highly flexible
+           way to perform additional image manipulation on the rendered
+           html page. (eg: --imagemagick='["-trim","-colorspace","Gray",
+           "-edge",1,"-negate"]')
    --url
            optionally explicitly identify the url instead of just
            tacking it on the end of the command-line options
@@ -119,8 +129,6 @@ DESCRIPTION
    -?, --help
            display this help
 ```
-
-In addition to these command-line options, options specific to the wkhtmltoimage node package may be passed directly through via the --wkhtmltoimage command-line option.  (see: [https://wkhtmltopdf.org/usage/wkhtmltopdf.txt](https://wkhtmltopdf.org/usage/wkhtmltopdf.txt))
 
 ### Trimming and sizing jpg image
 
@@ -136,7 +144,107 @@ In order to correct for this common problem, the `--trim` option has been added.
 
 However, if the automatic nature of this feature doesn't work for the types of html pages being rendered then you can explicitly specify `--width=<pixels>` and/or `--height=<pixels>` to set the page size used by wkhtmltoimage/wkhtmltopdf when rendering.
 
-### How to contribute
+### Pass-through config options
+
+The `--wkhtmltoimage` and `--imagemagick` options allow you to pass through options directly to the wkhtmltoimage and imagemagick node modules. This exposes some really useful options.
+
+#### --wkhtmltoimage options
+
+For example, for wkhtmltoimage, you can specify that the image should be zoomed by 200% in order to display retina resolution images in the email.
+
+```bash
+$ docker run --rm -e ACCESS_KEY_ID=AKIA000NOTREALKEY000 -e SECRET_ACCESS_KEY=l2r+0000000NotRealSecretAccessKey0000000 danlynn/wkhtmltos3 -V -b my-unique-bucket -k 123/profile12345.jpg -e 1 --wkhtmltoimage='{"zoom": 2.0}' 'http://some.com/retailers/123/users/12345/profile.html'
+
+wkhtmltos3:
+  bucket:      my-unique-bucket
+  key:         123/profile12345.jpg
+  format:      jpg
+  expiresDays: 1
+  url:         http://some.com/retailers/123/users/12345/profile.html
+
+  wkhtmltoimage generate ({"zoom": 2.0})...
+  imagemagick convert ([])...
+  uploading 32.57k to s3...
+  complete
+```
+
+See all wkhtmltopdf/wkhtmltoimage options on the wkhtmltopdf website.  Keep in mind that the wkhtmltoimage node module translates all the options from hyphenated to camel-case.  For example, if the following 2 options from the wkhtmltopdf reference page would be passed to the regular wkhtmltoimage like `--no-stop-slow-scripts --zoom 2.0`, then they should be passed in the wkhtmltos3 --wkhtmltoimage option as a json object like `{noStopSlowScripts: true, zoom: 2.0}` instead.
+
+options reference: [https://wkhtmltopdf.org/usage/wkhtmltopdf.txt](https://wkhtmltopdf.org/usage/wkhtmltopdf.txt)
+
+node module reference: [https://www.npmjs.com/package/wkhtmltoimage](https://www.npmjs.com/package/wkhtmltoimage)
+
+#### --imagemagic options
+
+Similarly, options can be passed directly through to the imagemagic node module via the `--imagemagic` option as a json array string. In this case the option names are the same as appears in the reference documentation (no camel-case conversion thankfully).
+
+For example, an edge filter can be applied to the image rendered from the html page via:
+
+```bash
+$ docker run --rm -e ACCESS_KEY_ID=AKIA000NOTREALKEY000 -e SECRET_ACCESS_KEY=l2r+0000000NotRealSecretAccessKey0000000 danlynn/wkhtmltos3 -V -b my-unique-bucket -k 123/14106.jpg -e 1 --trim --imagemagick='["-colorspace","Gray","-edge",1,"-negate"]' 'http://some.com/retailers/123/coupons/14106'
+
+wkhtmltos3:
+  bucket:      my-unique-bucket
+  key:         123/14106.jpg
+  format:      jpg
+  expiresDays: 1
+  url:         http://some.com/retailers/123/coupons/14106
+
+  wkhtmltoimage generate ({})...
+  imagemagick convert (["-trim","-colorspace","Gray","-edge",1,"-negate"])...
+  uploading 32.57k to s3...
+  complete
+```
+
+Producing the following image:
+
+![edge filtered coupon](https://github.com/danlynn/wkhtmltos3/raw/master/assets/edge.jpg "Edge Filtered Coupon")
+
+Note that the `--trim` option to wkhtmltos3 was simply merged into the other imagemagick options as `"-trim"`.
+
+
+### Font Handling
+
+The docker container has only the default fonts available on the Debian 8 base image.  These fonts can be displayed by launching the container into bash and using the `fc-list` command:
+
+```bash
+root@684fc69c5877:/myapp$ fc-list
+
+/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf: DejaVu Serif:style=Bold
+/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf: DejaVu Sans Mono:style=Book
+/usr/share/fonts/X11/Type1/c0649bt_.pfb: Bitstream Charter:style=Italic
+/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf: DejaVu Sans:style=Book
+/usr/share/fonts/X11/Type1/c0419bt_.pfb: Courier 10 Pitch:style=Regular
+/usr/share/fonts/X11/Type1/c0633bt_.pfb: Bitstream Charter:style=Bold Italic
+/usr/share/fonts/X11/Type1/c0648bt_.pfb: Bitstream Charter:style=Regular
+/usr/share/fonts/X11/Type1/c0611bt_.pfb: Courier 10 Pitch:style=Bold Italic
+/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf: DejaVu Sans:style=Bold
+/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf: DejaVu Sans Mono:style=Bold
+/usr/share/fonts/X11/Type1/c0632bt_.pfb: Bitstream Charter:style=Bold
+/usr/share/fonts/X11/Type1/c0582bt_.pfb: Courier 10 Pitch:style=Italic
+/usr/share/fonts/X11/Type1/c0583bt_.pfb: Courier 10 Pitch:style=Bold
+/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf: DejaVu Serif:style=Book
+```
+
+This is a pretty minimal list.  However, wkhtmltopdf does fully support web fonts via webkit.  Thus, you can make any other fonts that you need available via @font-face css rules like:
+
+```css
+@font-face {
+	font-family: 'core-icons';
+	src:url('core-icons.eot');
+	src:url('core-icons.eot') format('embedded-opentype'),
+		url('core-icons.woff') format('woff'),
+		url('core-icons.ttf') format('truetype'),
+		url('core-icons.svg') format('svg');
+	font-weight: normal;
+	font-style: normal;
+}
+```
+
+...which can use web fonts from google or fonts hosted on your own web servers.
+
+
+### How to develop/customize wkhtmltos3
 
 Check out the project from github at: [https://github.com/danlynn/wkhtmltos3](https://github.com/danlynn/wkhtmltos3)
 
