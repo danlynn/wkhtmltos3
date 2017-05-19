@@ -1,6 +1,8 @@
 ### Supported tags and respective `Dockerfile` links
 
-+ [`1.0.0`,`latest` (1.0.0/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.0.0/Dockerfile)
++ [`1.2.0`,`latest` (1.2.0/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.2.0/Dockerfile)
++ [`1.1.0` (1.1.0/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.1.0/Dockerfile)
++ [`1.0.0` (1.0.0/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.0.0/Dockerfile)
 
 This image will execute [wkhtmltoimage](https://wkhtmltopdf.org) to render an html page specified by an URL to a jpg image and then upload that image to s3.
 
