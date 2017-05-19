@@ -150,7 +150,7 @@ The `--wkhtmltoimage` and `--imagemagick` options allow you to pass through opti
 
 #### --wkhtmltoimage options
 
-For example, for wkhtmltoimage, you can specify that the image should be zoomed by 200% in order to display retina resolution images in the email.
+For example, for wkhtmltoimage, you can specify that the image should be zoomed by 200% in order to produce retina resolution images.
 
 ```bash
 $ docker run --rm -e ACCESS_KEY_ID=AKIA000NOTREALKEY000 -e SECRET_ACCESS_KEY=l2r+0000000NotRealSecretAccessKey0000000 danlynn/wkhtmltos3 -V -b my-unique-bucket -k 123/profile12345.jpg -e 1 --wkhtmltoimage='{"zoom": 2.0}' 'http://some.com/retailers/123/users/12345/profile.html'
@@ -168,7 +168,7 @@ wkhtmltos3:
   complete
 ```
 
-See all wkhtmltopdf/wkhtmltoimage options on the wkhtmltopdf website.  Keep in mind that the wkhtmltoimage node module translates all the options from hyphenated to camel-case.  For example, if the following 2 options from the wkhtmltopdf reference page would be passed to the regular wkhtmltoimage like `--no-stop-slow-scripts --zoom 2.0`, then they should be passed in the wkhtmltos3 --wkhtmltoimage option as a json object like `{noStopSlowScripts: true, zoom: 2.0}` instead.
+You can see all of the wkhtmltopdf/wkhtmltoimage options on the wkhtmltopdf website.  Keep in mind that the wkhtmltoimage node module requires you to provide all the hypenated options (as seen in the [options reference](https://wkhtmltopdf.org/usage/wkhtmltopdf.txt)) as camel-cased instead (weird).  For example, if the following 2 options from the wkhtmltopdf reference page would be passed to the regular wkhtmltoimage like `--no-stop-slow-scripts --zoom 2.0`, then they should be passed in the wkhtmltos3 --wkhtmltoimage option as a json object like `{"noStopSlowScripts": true, "zoom": 2.0}` instead.
 
 options reference: [https://wkhtmltopdf.org/usage/wkhtmltopdf.txt](https://wkhtmltopdf.org/usage/wkhtmltopdf.txt)
 
@@ -176,7 +176,7 @@ node module: [https://www.npmjs.com/package/wkhtmltoimage](https://www.npmjs.com
 
 #### --imagemagic options
 
-Similarly, options can be passed directly through to the imagemagic node module via the `--imagemagic` option as a json array string. In this case the option names are the same as appears in the reference documentation (no camel-case conversion thankfully).
+Similarly, options can be passed directly through to the imagemagic node module via the `--imagemagic` option as a json array string. In this case the option names are the same as appears in the reference documentation (no camel-case conversion, thankfully).
 
 For example, an edge filter can be applied to the image rendered from the html page via:
 
@@ -277,7 +277,8 @@ wkhtmltos3:
   expiresDays: 1
   url:         http://some.com/retailers/123/users/12345/profile.html
 
-  rendering...
+  wkhtmltoimage generate ({})...
+  imagemagick convert ([])...
   uploading 32.57k to s3...
   complete
 ```
