@@ -126,6 +126,8 @@ DESCRIPTION
            tacking it on the end of the command-line options
    -V, --verbose
            provide verbose logging
+   -P, --profile
+           log execution timing info at end of run
    -?, --help
            display this help
 ```

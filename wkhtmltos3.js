@@ -9,8 +9,15 @@ const moment = require('moment')
 const fs = require('fs-extra')
 const path = require('path')
 
+/**
+ * Holds profiling measurement entries
+ *
+ * @type {Array<string>}
+ */
+let profileLog = null
 
-function displayHelpDoc() {
+
+function displayHelp() {
   console.log(`
 NAME
    wkhtmltos3 - Use webkit to convert html page to image on s3
@@ -71,6 +78,8 @@ DESCRIPTION
            tacking it on the end of the command-line options
    -V, --verbose
            provide verbose logging
+   -P, --profile
+           log execution timing info at end of run
    -?, --help
            display this help
 `)
@@ -98,6 +107,7 @@ function getOptions() {
     {name: 'accessKeyId',                 type: String},
     {name: 'secretAccessKey',             type: String},
     {name: 'verbose',         alias: 'V', type: Boolean},
+    {name: 'profile',         alias: 'P', type: Boolean},
     {name: 'help',            alias: '?', type: Boolean},
     {name: 'wkhtmltoimage',               type: String},
     {name: 'imagemagick',                 type: String},
@@ -139,7 +149,7 @@ function getOptions() {
 
   // validations
   if (options.help || process.argv.length === 2) {
-    displayHelpDoc()
+    displayHelp()
     process.exit()
   }
   if (!options.bucket || !options.key || !options.url) {
@@ -154,7 +164,37 @@ function getOptions() {
     console.error('ERROR: either --secretAccessKey option or SECRET_ACCESS_KEY env var is required')
     process.exit(1)
   }
+
+  // enable profiling by changing profileLog from null to []
+  if (options.profile)
+    profileLog = [` start: ${moment().format('h:mm:ss.SSS a')}`]
+
   return options
+}
+
+
+/**
+ * Add profiling measurement to profileLog.  If 'profileLog' var has
+ * not been initialized then skip.
+ *
+ * @param since {Date} to be used to calculate elapsed millisecs
+ * @param message {string} description of measurement
+ */
+function addProfileInfo(since, message) {
+  if (profileLog)
+    profileLog.push(`${('      ' + (new Date() - since)).slice(-6)}: ${message}`)
+}
+
+
+/**
+ * Display profileLog information in console.  If 'profileLog' var has
+ * not been initialized then skip.
+ *
+ * @param options {Object} containing 'profile' array attribute
+ */
+function displayProfileLog() {
+  if (profileLog)
+    console.log(`Execution Profiling Log:\n  ${profileLog.join("\n  ")}\n`)
 }
 
 
@@ -167,6 +207,7 @@ function getOptions() {
  * @param options {Object} {bucket, key, expiresDays, accessKeyId, secretAccessKey, verbose, url}
  */
 function uploadToS3(imagepath, options) {
+  const start = new Date()
   if (options.verbose)
     console.log(`  uploading ${fs.statSync(imagepath).size/1000.0}k to s3...`)
   const accessKeyId = options.accessKeyId || process.env.ACCESS_KEY_ID
@@ -193,6 +234,8 @@ function uploadToS3(imagepath, options) {
         console.error(`  failed: error = ${error}\n`);
       else
         console.error(`wkhtmltos3: fail upload: ${options.url} => s3:${options.bucket}:${options.key} (error = ${error})`);
+      addProfileInfo(start, 'fail s3 upload')
+      displayProfileLog()
       process.exit(1)
     }
     else {
@@ -200,6 +243,8 @@ function uploadToS3(imagepath, options) {
         console.log('  complete\n')
       else
         console.log(`wkhtmltos3: success: ${options.url} => s3:${options.bucket}:${options.key}`);
+      addProfileInfo(start, 'complete s3 upload')
+      displayProfileLog()
     }
   });
 }
@@ -218,6 +263,7 @@ function uploadToS3(imagepath, options) {
  * @param callback {function} invoked upon success passing (destpath, options)
  */
 function imagemagickConvert(imagepath, options, callback) {
+  const start = new Date()
   if (options.verbose)
     console.log(`  imagemagick convert (${JSON.stringify(options.imagemagick)})...`)
   const destpath = `/tmp/imagemagick/${options.key}`
@@ -228,9 +274,12 @@ function imagemagickConvert(imagepath, options, callback) {
         console.error(`  failed: error = ${error.message}\n`)
       else
         console.error(`wkhtmltos3: fail imagemagick convert: ${options.url} => s3:${options.bucket}:${options.key} (error = ${error.message})`);
+      addProfileInfo(start, 'fail imagemagick convert')
+      displayProfileLog()
       process.exit(1)
     }
     else {
+      addProfileInfo(start, 'complete imagemagick convert')
       callback(destpath, options)
     }
   })
@@ -247,6 +296,7 @@ function imagemagickConvert(imagepath, options, callback) {
  * @param options {Object} {bucket, key, expiresDays, accessKeyId, secretAccessKey, verbose, url}
  */
 function renderPage(options) {
+  const start = new Date()
   if (options.verbose)
     console.log(`
 wkhtmltos3:
@@ -272,6 +322,7 @@ wkhtmltos3:
   Object.assign(generateOptions, {output: imagepath})
   wkhtmltoimage.generate(options.url, generateOptions, function (code, signal) {
     if (code === 0) {
+      addProfileInfo(start, 'complete wkhtmltoimage generate')
       if (options.trim)
         options.imagemagick = ['-trim'].concat(options.imagemagick)
       if (options.imagemagick.length > 0) {
@@ -288,6 +339,8 @@ wkhtmltos3:
         console.error(`  failed: code = ${code}${signal ? ` (${signal})`: ''}\n`)
       else
         console.error(`wkhtmltos3: fail render: ${options.url} => s3:${options.bucket}:${options.key} (code = ${code}${signal ? ` (${signal})`: ''})`);
+      addProfileInfo(start, 'fail wkhtmltoimage generate')
+      displayProfileLog()
       process.exit(1)
     }
   });
