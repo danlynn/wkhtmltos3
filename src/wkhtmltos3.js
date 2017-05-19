@@ -8,13 +8,10 @@ const AWS = require('aws-sdk')
 const moment = require('moment')
 const fs = require('fs-extra')
 const path = require('path')
+const ProfileLog = require('./profilelog')
 
-/**
- * Holds profiling measurement entries
- *
- * @type {Array<string>}
- */
-let profileLog = null
+
+const profileLog = new ProfileLog()
 
 
 function displayHelp() {
@@ -165,36 +162,10 @@ function getOptions() {
     process.exit(1)
   }
 
-  // enable profiling by changing profileLog from null to []
-  if (options.profile)
-    profileLog = [` start: ${moment().format('h:mm:ss.SSS a')}`]
+  // set profileLog enabled state
+  profileLog.enabled = options.profile ? true : false
 
   return options
-}
-
-
-/**
- * Add profiling measurement to profileLog.  If 'profileLog' var has
- * not been initialized then skip.
- *
- * @param since {Date} to be used to calculate elapsed millisecs
- * @param message {string} description of measurement
- */
-function addProfileInfo(since, message) {
-  if (profileLog)
-    profileLog.push(`${('      ' + (new Date() - since)).slice(-6)}: ${message}`)
-}
-
-
-/**
- * Display profileLog information in console.  If 'profileLog' var has
- * not been initialized then skip.
- *
- * @param options {Object} containing 'profile' array attribute
- */
-function displayProfileLog() {
-  if (profileLog)
-    console.log(`Execution Profiling Log:\n  ${profileLog.join("\n  ")}\n`)
 }
 
 
@@ -234,8 +205,8 @@ function uploadToS3(imagepath, options) {
         console.error(`  failed: error = ${error}\n`);
       else
         console.error(`wkhtmltos3: fail upload: ${options.url} => s3:${options.bucket}:${options.key} (error = ${error})`);
-      addProfileInfo(start, 'fail s3 upload')
-      displayProfileLog()
+      profileLog.addEntry(start, 'fail s3 upload')
+      profileLog.writeToConsole()
       process.exit(1)
     }
     else {
@@ -243,8 +214,8 @@ function uploadToS3(imagepath, options) {
         console.log('  complete\n')
       else
         console.log(`wkhtmltos3: success: ${options.url} => s3:${options.bucket}:${options.key}`);
-      addProfileInfo(start, 'complete s3 upload')
-      displayProfileLog()
+      profileLog.addEntry(start, 'complete s3 upload')
+      profileLog.writeToConsole()
     }
   });
 }
@@ -252,8 +223,7 @@ function uploadToS3(imagepath, options) {
 
 /**
  * Perform imagemagick convert command on the file specified by 'imagePath'
- * with the specified 'options'.  The
- * extra whitespace around the image.
+ * with the specified 'options'.
  *
  * @see http://www.imagemagick.org/Usage/crop/#trim
  * @see https://www.npmjs.com/package/imagemagick
@@ -274,12 +244,12 @@ function imagemagickConvert(imagepath, options, callback) {
         console.error(`  failed: error = ${error.message}\n`)
       else
         console.error(`wkhtmltos3: fail imagemagick convert: ${options.url} => s3:${options.bucket}:${options.key} (error = ${error.message})`);
-      addProfileInfo(start, 'fail imagemagick convert')
-      displayProfileLog()
+      profileLog.addEntry(start, 'fail imagemagick convert')
+      profileLog.writeToConsole()
       process.exit(1)
     }
     else {
-      addProfileInfo(start, 'complete imagemagick convert')
+      profileLog.addEntry(start, 'complete imagemagick convert')
       callback(destpath, options)
     }
   })
@@ -322,7 +292,7 @@ wkhtmltos3:
   Object.assign(generateOptions, {output: imagepath})
   wkhtmltoimage.generate(options.url, generateOptions, function (code, signal) {
     if (code === 0) {
-      addProfileInfo(start, 'complete wkhtmltoimage generate')
+      profileLog.addEntry(start, 'complete wkhtmltoimage generate')
       if (options.trim)
         options.imagemagick = ['-trim'].concat(options.imagemagick)
       if (options.imagemagick.length > 0) {
@@ -339,8 +309,8 @@ wkhtmltos3:
         console.error(`  failed: code = ${code}${signal ? ` (${signal})`: ''}\n`)
       else
         console.error(`wkhtmltos3: fail render: ${options.url} => s3:${options.bucket}:${options.key} (code = ${code}${signal ? ` (${signal})`: ''})`);
-      addProfileInfo(start, 'fail wkhtmltoimage generate')
-      displayProfileLog()
+      profileLog.addEntry(start, 'fail wkhtmltoimage generate')
+      profileLog.writeToConsole()
       process.exit(1)
     }
   });

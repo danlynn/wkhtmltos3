@@ -4,7 +4,7 @@ MAINTAINER Dan Lynn <docker@danlynn.org>
 WORKDIR /myapp
 
 # run wkhtmltos3.js script using node on container start
-ENTRYPOINT ["node", "wkhtmltos3.js"]
+ENTRYPOINT ["node", "src/wkhtmltos3.js"]
 
 # install dependencies
 RUN \
@@ -24,7 +24,8 @@ ENV PATH="/wkhtmltox/bin:${PATH}"
 RUN apt-get install -y imagemagick=8:6.8.9.9-5+deb8u8 --no-install-recommends && \
 	rm -rf /var/lib/apt/lists/*
 
-ADD wkhtmltos3.js package.json /myapp/
+COPY src src
+ADD package.json /myapp/
 
 RUN \
 	npm install

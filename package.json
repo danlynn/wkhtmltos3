@@ -2,7 +2,7 @@
   "name": "wkhtmltos3",
   "version": "1.0.0",
   "description": "Retrieve webpage and render to jpg image on s3.",
-  "main": "wkhtmltos3.js",
+  "main": "src/wkhtmltos3.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
