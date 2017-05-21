@@ -4,7 +4,7 @@
  * Simple profile logging utility
  *
  * usage:
- *   const ProfileLog = require('profilelog')
+ *   const ProfileLog = require('./profilelog')
  *   profileLog = new ProfileLog('Test Performance')
  *   let start = new Date()
  *   ...do something being measured...
@@ -41,16 +41,16 @@ class ProfileLog {
    * @param message {string} description of measurement
    */
   addEntry(since, message) {
-  if (this.enabled)
-    this.entries.push(`${('      ' + (new Date() - since)).slice(-6)}: ${message}`)
+    if (this.enabled)
+      this.entries.push(`${('      ' + (new Date() - since)).slice(-6)}: ${message}`)
   }
 
   /**
    * Write ProfileLog entries to console if 'enabled'.
    */
   writeToConsole() {
-  if (this.enabled)
-    console.log(`Execution Profiling Log:\n  ${this.entries.join("\n  ")}\n`)
+    if (this.enabled)
+      console.log(`Execution Profiling Log:\n  ${this.entries.join("\n  ")}\n`)
   }
 
 }
