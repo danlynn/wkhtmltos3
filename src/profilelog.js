@@ -47,10 +47,14 @@ class ProfileLog {
 
   /**
    * Write ProfileLog entries to console if 'enabled'.
+   *
+   * @param clear {boolean} true to clear profiling info entries afterwards
    */
-  writeToConsole() {
+  writeToConsole(clear = true) {
     if (this.enabled)
       console.log(`Execution Profiling Log:\n  ${this.entries.join("\n  ")}\n`)
+    if (clear)
+      this.clear()
   }
 
 }
