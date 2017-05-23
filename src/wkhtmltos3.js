@@ -228,7 +228,7 @@ function awsConfig() {
 
 
 function logger(options, level, verbose_msg, short_msg) {
-  msg = options.verbose ? verbose_msg : short_msg
+  const msg = options.verbose ? verbose_msg : short_msg
   if (msg) {
     if (level === 'error')
       console.error(msg)
@@ -246,9 +246,9 @@ function logger(options, level, verbose_msg, short_msg) {
  * @param imagepath {string} path of file to be uploaded to s3
  * @param options {Object} {bucket, key, expiresDays, accessKeyId, secretAccessKey, verbose, url}
  * @param success {function} invoked upon success
- * @param error {function} invoked upon error
+ * @param fail {function} invoked upon fail
  */
-function uploadToS3(imagepath, options, success, error) {
+function uploadToS3(imagepath, options, success, fail) {
   const start = new Date()
   if (options.verbose)
     console.log(`  uploading ${fs.statSync(imagepath).size/1000.0}k to s3...`)
@@ -272,7 +272,7 @@ function uploadToS3(imagepath, options, success, error) {
         `wkhtmltos3: fail upload: ${options.url} => s3:${options.bucket}:${options.key} (error = ${error})`
       )
       profileLog.addEntry(start, 'fail s3 upload')
-      error()
+      fail()
     }
     else {
       logger(options, 'log',
@@ -296,9 +296,9 @@ function uploadToS3(imagepath, options, success, error) {
  * @param imagepath {string} path of image file to be trimmed
  * @param options {Object} {bucket, key, expiresDays, accessKeyId, secretAccessKey, verbose, url}
  * @param success {function} invoked upon success passing (destpath, options)
- * @param error {function} invoked upon error
+ * @param fail {function} invoked upon fail
  */
-function imagemagickConvert(imagepath, options, success, error) {
+function imagemagickConvert(imagepath, options, success, fail) {
   const start = new Date()
   if (options.verbose)
     console.log(`  imagemagick convert (${JSON.stringify(options.imagemagick)})...`)
@@ -308,10 +308,10 @@ function imagemagickConvert(imagepath, options, success, error) {
     if (error) {
       logger(options, 'error',
         `  failed: error = ${error.message}\n`,
-        `wkhtmltos3: fail imagemagick convert: ${options.url} => s3:${options.bucket}:${options.key} (error = ${error.message})`
+        `wkhtmltos3: fail imagemagick convert: ${options.url} => s3:${options.bucket}:${options.key} (error = ${error.message}, stdout = ${stdout})`
       )
       profileLog.addEntry(start, 'fail imagemagick convert')
-      error()
+      fail()
     }
     else {
       profileLog.addEntry(start, 'complete imagemagick convert')
@@ -330,9 +330,9 @@ function imagemagickConvert(imagepath, options, success, error) {
  *
  * @param options {Object} {bucket, key, expiresDays, accessKeyId, secretAccessKey, verbose, url}
  * @param success {function} invoked upon success
- * @param error {function} invoked upon error
+ * @param fail {function} invoked upon fail
  */
-function renderPage(options, success, error) {
+function renderPage(options, success, fail) {
   const start = new Date()
   if (options.verbose)
     console.log(`
@@ -365,20 +365,20 @@ wkhtmltos3:
       if (options.imagemagick.length > 0) {
         imagemagickConvert(imagepath, options,
           function(imagepath, options) {
-            uploadToS3(imagepath, options, success, error)
+            uploadToS3(imagepath, options, success, fail)
           },
-          error
+          fail
         )
       }
       else {
-        uploadToS3(imagepath, options, success, error)
+        uploadToS3(imagepath, options, success, fail)
       }
     }
     else {
-      if (options.verbose)
-        console.error(`  failed: code = ${code}${signal ? ` (${signal})`: ''}\n`)
-      else
-        console.error(`wkhtmltos3: fail render: ${options.url} => s3:${options.bucket}:${options.key} (code = ${code}${signal ? ` (${signal})`: ''})`);
+      logger(options, 'error',
+        `  failed: code = ${code}${signal ? ` (${signal})`: ''}\n`,
+        `wkhtmltos3: fail render: ${options.url} => s3:${options.bucket}:${options.key} (code = ${code}${signal ? ` (${signal})`: ''})`
+      )
       profileLog.addEntry(start, 'fail wkhtmltoimage generate')
     }
   });
