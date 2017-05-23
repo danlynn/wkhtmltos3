@@ -139,7 +139,11 @@ function getOptions() {
   ]
 
   // parse command-line args into options object
-  const options = commandLineArgs(optionDefinitions)
+  const options = commandLineArgs(optionDefinitions, { partial: true })
+
+  // check for extra options
+  if (options._unknown)
+    console.log(`WARNING: unknown extra options: ${JSON.stringify(options._unknown)}`)
 
   // convert options.wkhtmltoimage from json string into Object instance
   if (options.wkhtmltoimage) {
