@@ -94,21 +94,26 @@ DESCRIPTION
 function getOptions() {
   // define command-line options
   const optionDefinitions = [
-    {name: 'bucket',          alias: 'b', type: String},
-    {name: 'key',             alias: 'k', type: String},
-    {name: 'expiresDays',     alias: 'e', type: Number},
-    {name: 'format',                      type: String},
-    {name: 'trim',            alias: 't', type: Boolean},
-    {name: 'width',                       type: Number},
-    {name: 'height',                      type: Number},
-    {name: 'accessKeyId',                 type: String},
-    {name: 'secretAccessKey',             type: String},
-    {name: 'verbose',         alias: 'V', type: Boolean},
-    {name: 'profile',         alias: 'P', type: Boolean},
-    {name: 'help',            alias: '?', type: Boolean},
-    {name: 'wkhtmltoimage',               type: String},
-    {name: 'imagemagick',                 type: String},
-    {name: 'url',                         type: String, defaultOption: true}
+    {name: 'queueUrl',     alias: 'q', type: String}, // aws SQS queue name
+    {name: 'region',                   type: String}, // aws region (eg: 'us-east-1')
+    {name: 'maxNumberOfMessages',      type: Number}, // number to process at a time
+    {name: 'waitTimeSeconds',          type: Number}, // >0 causes long polling
+    {name: 'visibilityTimeout',        type: Number}, // allow try again in case of fail
+    {name: 'bucket',       alias: 'b', type: String},
+    {name: 'key',          alias: 'k', type: String},
+    {name: 'expiresDays',  alias: 'e', type: Number},
+    {name: 'format',                   type: String},
+    {name: 'trim',         alias: 't', type: Boolean},
+    {name: 'width',                    type: Number},
+    {name: 'height',                   type: Number},
+    {name: 'accessKeyId',              type: String},
+    {name: 'secretAccessKey',          type: String},
+    {name: 'verbose',      alias: 'V', type: Boolean},
+    {name: 'profile',      alias: 'P', type: Boolean},
+    {name: 'help',         alias: '?', type: Boolean},
+    {name: 'wkhtmltoimage',            type: String},
+    {name: 'imagemagick',              type: String},
+    {name: 'url',                      type: String, defaultOption: true}
   ]
 
   // parse command-line args into options object
@@ -153,19 +158,49 @@ function getOptions() {
     console.error('ERROR: -b bucket, -k key, and url are required')
     process.exit(1)
   }
-  if (!options.accessKeyId && !process.env.ACCESS_KEY_ID) {
-    console.error('ERROR: either --accessKeyId option or ACCESS_KEY_ID env var is required')
-    process.exit(1)
-  }
-  if (!options.secretAccessKey && !process.env.SECRET_ACCESS_KEY) {
-    console.error('ERROR: either --secretAccessKey option or SECRET_ACCESS_KEY env var is required')
-    process.exit(1)
-  }
+  // if (!options.accessKeyId && !process.env.ACCESS_KEY_ID) {
+  //   console.error('ERROR: either --accessKeyId option or ACCESS_KEY_ID env var is required')
+  //   process.exit(1)
+  // }
+  // if (!options.secretAccessKey && !process.env.SECRET_ACCESS_KEY) {
+  //   console.error('ERROR: either --secretAccessKey option or SECRET_ACCESS_KEY env var is required')
+  //   process.exit(1)
+  // }
 
   // set profileLog enabled state
-  profileLog.enabled = options.profile ? true : false
+  profileLog.enabled = !!options.profile
 
   return options
+}
+
+
+function awsConfig() {
+  // TODO: check into using: AWS.config.loadFromPath('./config.json')
+  // TODO: see: http://docs.aws.amazon.com/sdk-for-javascript/v2/developer-guide/loading-node-credentials-json-file.html
+  const accessKeyId = options.accessKeyId || process.env.ACCESS_KEY_ID
+  const secretAccessKey = options.secretAccessKey || process.env.SECRET_ACCESS_KEY
+  const region = options.region || process.env.REGION
+  let awsAuth = {} // not needed if running within aws environment already
+  if (accessKeyId && secretAccessKey) {
+    awsAuth = {
+      accessKeyId: accessKeyId,
+      secretAccessKey: secretAccessKey
+    }
+  }
+  if (region)
+    Object.assign(awsAuth, {region: region})
+  return awsAuth
+}
+
+
+function logger(options, level, verbose_msg, short_msg) {
+  msg = options.verbose ? verbose_msg : short_msg
+  if (msg) {
+    if (level === 'error')
+      console.error(msg)
+    else
+      console.log(msg)
+  }
 }
 
 
@@ -176,21 +211,18 @@ function getOptions() {
  *
  * @param imagepath {string} path of file to be uploaded to s3
  * @param options {Object} {bucket, key, expiresDays, accessKeyId, secretAccessKey, verbose, url}
+ * @param success {function} invoked upon success
+ * @param error {function} invoked upon error
  */
-function uploadToS3(imagepath, options) {
+function uploadToS3(imagepath, options, success, error) {
   const start = new Date()
   if (options.verbose)
     console.log(`  uploading ${fs.statSync(imagepath).size/1000.0}k to s3...`)
-  const accessKeyId = options.accessKeyId || process.env.ACCESS_KEY_ID
-  const secretAccessKey = options.secretAccessKey || process.env.SECRET_ACCESS_KEY
   let expiresDate = null
   if (options.expiresDays)
     expiresDate = moment().add(options.expiresDays, 'days').toDate()
 
-  const S3 = new AWS.S3({
-    accessKeyId: accessKeyId,
-    secretAccessKey: secretAccessKey
-  });
+  const S3 = new AWS.S3(awsConfig());
 
   S3.putObject({
     Bucket: options.bucket,
@@ -201,21 +233,20 @@ function uploadToS3(imagepath, options) {
     Expires: expiresDate
   }, (error) => {
     if (error) {
-      if (options.verbose)
-        console.error(`  failed: error = ${error}\n`);
-      else
-        console.error(`wkhtmltos3: fail upload: ${options.url} => s3:${options.bucket}:${options.key} (error = ${error})`);
+      logger(options, 'error',
+        `  failed: error = ${error}\n`,
+        `wkhtmltos3: fail upload: ${options.url} => s3:${options.bucket}:${options.key} (error = ${error})`
+      )
       profileLog.addEntry(start, 'fail s3 upload')
-      profileLog.writeToConsole()
-      process.exit(1)
+      error()
     }
     else {
-      if (options.verbose)
-        console.log('  complete\n')
-      else
-        console.log(`wkhtmltos3: success: ${options.url} => s3:${options.bucket}:${options.key}`);
+      logger(options, 'log',
+        `  complete\n`,
+        `wkhtmltos3: success: ${options.url} => s3:${options.bucket}:${options.key}`
+      )
       profileLog.addEntry(start, 'complete s3 upload')
-      profileLog.writeToConsole()
+      success()
     }
   });
 }
@@ -230,9 +261,10 @@ function uploadToS3(imagepath, options) {
  *
  * @param imagepath {string} path of image file to be trimmed
  * @param options {Object} {bucket, key, expiresDays, accessKeyId, secretAccessKey, verbose, url}
- * @param callback {function} invoked upon success passing (destpath, options)
+ * @param success {function} invoked upon success passing (destpath, options)
+ * @param error {function} invoked upon error
  */
-function imagemagickConvert(imagepath, options, callback) {
+function imagemagickConvert(imagepath, options, success, error) {
   const start = new Date()
   if (options.verbose)
     console.log(`  imagemagick convert (${JSON.stringify(options.imagemagick)})...`)
@@ -240,17 +272,16 @@ function imagemagickConvert(imagepath, options, callback) {
   fs.mkdirsSync(path.dirname(destpath))
   imagemagick.convert([imagepath].concat(options.imagemagick, destpath), function (error, stdout) {
     if (error) {
-      if (options.verbose)
-        console.error(`  failed: error = ${error.message}\n`)
-      else
-        console.error(`wkhtmltos3: fail imagemagick convert: ${options.url} => s3:${options.bucket}:${options.key} (error = ${error.message})`);
+      logger(options, 'error',
+        `  failed: error = ${error.message}\n`,
+        `wkhtmltos3: fail imagemagick convert: ${options.url} => s3:${options.bucket}:${options.key} (error = ${error.message})`
+      )
       profileLog.addEntry(start, 'fail imagemagick convert')
-      profileLog.writeToConsole()
-      process.exit(1)
+      error()
     }
     else {
       profileLog.addEntry(start, 'complete imagemagick convert')
-      callback(destpath, options)
+      success(destpath, options)
     }
   })
 }
@@ -264,8 +295,10 @@ function imagemagickConvert(imagepath, options, callback) {
  * @see http://madalgo.au.dk/~jakobt/wkhtmltoxdoc/wkhtmltoimage_0.10.0_rc2-doc.html
  *
  * @param options {Object} {bucket, key, expiresDays, accessKeyId, secretAccessKey, verbose, url}
+ * @param success {function} invoked upon success
+ * @param error {function} invoked upon error
  */
-function renderPage(options) {
+function renderPage(options, success, error) {
   const start = new Date()
   if (options.verbose)
     console.log(`
@@ -296,12 +329,15 @@ wkhtmltos3:
       if (options.trim)
         options.imagemagick = ['-trim'].concat(options.imagemagick)
       if (options.imagemagick.length > 0) {
-        imagemagickConvert(imagepath, options, function(imagepath, options) {
-          uploadToS3(imagepath, options)
-        })
+        imagemagickConvert(imagepath, options,
+          function(imagepath, options) {
+            uploadToS3(imagepath, options, success, error)
+          },
+          error
+        )
       }
       else {
-        uploadToS3(imagepath, options)
+        uploadToS3(imagepath, options, success, error)
       }
     }
     else {
@@ -310,11 +346,96 @@ wkhtmltos3:
       else
         console.error(`wkhtmltos3: fail render: ${options.url} => s3:${options.bucket}:${options.key} (code = ${code}${signal ? ` (${signal})`: ''})`);
       profileLog.addEntry(start, 'fail wkhtmltoimage generate')
-      profileLog.writeToConsole()
-      process.exit(1)
     }
   });
 }
 
 
-renderPage(getOptions())
+function listenOnSqsQueue(options) {
+  console.log('listenOnSqsQueue: started')
+
+  const queueUrl = options.queueUrl
+  const maxNumberOfMessages = options.maxNumberOfMessages || 5
+  const waitTimeSeconds = options.waitTimeSeconds || 10
+  const visibilityTimeout = options.visibilityTimeout || 20
+
+  const sqs = new AWS.SQS(awsConfig())
+
+  params = {
+    AttributeNames: [
+      'SentTimestamp',
+      'ApproximateFirstReceiveTimestamp',
+      'ApproximateReceiveCount'
+    ],
+    MaxNumberOfMessages: maxNumberOfMessages,
+    QueueUrl: queueUrl,
+    VisibilityTimeout: visibilityTimeout,
+    WaitTimeSeconds: waitTimeSeconds
+  }
+
+  function receiveMessage() {
+    sqs.receiveMessage(params, function(error, data) {
+      setImmediate(receiveMessage) // loop
+      if (error) {
+        console.log(`receiveMessage: fail: ${error}`)
+      }
+      else {
+        if (!data.Messages) {
+          console.log(`receiveMessage: none (data: ${JSON.stringify(data)})`)
+        }
+        else {
+          console.log(`receiveMessage: success: message:\n${JSON.stringify(data.Messages.map(function(m) {return JSON.parse(m.Body)}), null, 2)}`)
+          // TODO: invoke render then delete upon success in callback
+
+          for (let message of data.Messages) {
+            Object.assign(options, JSON.parse(message.Body))
+            renderPage(
+              options,
+              function() {
+                console.log(`receiveMessage: delete...`)
+                const deleteParams = {
+                  QueueUrl: queueUrl,
+                  ReceiptHandle: data.Messages[0].ReceiptHandle
+                }
+                sqs.deleteMessage(deleteParams, function(error, data) {
+                  if (error) {
+                    console.log(`receiveMessage: delete: fail: ${error}`)
+                  } else {
+                    console.log(`receiveMessage: delete: success: ${JSON.stringify(data)}`)
+                  }
+                })
+                profileLog.writeToConsole()
+              },
+              function() {
+                profileLog.writeToConsole()
+              }
+            )
+          }
+        }
+      }
+    })
+  }
+
+  receiveMessage()
+}
+
+
+// ===== main =======================================================
+const options = getOptions()
+
+if (options.queueUrl) {
+  listenOnSqsQueue(options) // run forever
+}
+else {
+  renderPage( // render one page then exit
+    options,
+    function() {
+      profileLog.writeToConsole()
+      process.exit()
+    },
+    function() {
+      profileLog.writeToConsole()
+      process.exit(1)
+    }
+  )
+}
