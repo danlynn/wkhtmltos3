@@ -275,11 +275,13 @@ function uploadToS3(imagepath, options, success, fail) {
       fail()
     }
     else {
+      const elapsed = new Date() - options.start
       logger(options, 'log',
-        `  complete\n`,
-        `wkhtmltos3: success: ${options.url} => s3:${options.bucket}:${options.key}`
+        `  complete (${elapsed} ms)\n`,
+        `wkhtmltos3: success (${elapsed} ms): ${options.url} => s3:${options.bucket}:${options.key}`
       )
       profileLog.addEntry(start, 'complete s3 upload')
+      profileLog.addEntry(options.start, 'total')
       success()
     }
   });
@@ -334,6 +336,7 @@ function imagemagickConvert(imagepath, options, success, fail) {
  */
 function renderPage(options, success, fail) {
   const start = new Date()
+  options.start = start
   if (options.verbose)
     console.log(`
 wkhtmltos3:
@@ -415,27 +418,25 @@ function listenOnSqsQueue(options) {
       }
       else {
         if (!data.Messages) {
-          console.log(`receiveMessage: none (data: ${JSON.stringify(data)})`)
+          logger(options, 'log', `receiveMessage: none (data: ${JSON.stringify(data)})`)
         }
         else {
-          console.log(`receiveMessage: success: message:\n${JSON.stringify(data.Messages.map(function(m) {return JSON.parse(m.Body)}), null, 2)}`)
-          // TODO: invoke render then delete upon success in callback
-
+          logger(options, 'log', `receiveMessage: success: message:\n${JSON.stringify(data.Messages.map(function(m) {return JSON.parse(m.Body)}), null, 2)}`)
           for (let message of data.Messages) {
             Object.assign(options, JSON.parse(message.Body))
             renderPage(
               options,
               function() {
-                console.log(`receiveMessage: delete...`)
+                logger(options, 'log', `receiveMessage: delete...`)
                 const deleteParams = {
                   QueueUrl: queueUrl,
                   ReceiptHandle: data.Messages[0].ReceiptHandle
                 }
                 sqs.deleteMessage(deleteParams, function(error, data) {
                   if (error) {
-                    console.log(`receiveMessage: delete: fail: ${error}`)
+                    console.error(`receiveMessage: delete: fail: ${error}`)
                   } else {
-                    console.log(`receiveMessage: delete: success: ${JSON.stringify(data)}`)
+                    logger(options, 'log', `receiveMessage: delete: success: ${JSON.stringify(data)}`)
                   }
                 })
                 profileLog.writeToConsole()
