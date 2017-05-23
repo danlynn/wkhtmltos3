@@ -20,17 +20,39 @@ NAME
    wkhtmltos3 - Use webkit to convert html page to image on s3
 
 SYNOPSIS
-   wkhtmltos3 -b bucket -k key -e expiresDays
+   wkhtmltos3 [-q queueUrl] [--region] [--maxNumberOfMessages] 
+              [--waitTimeSeconds] [--waitTimeSeconds] [--visibilityTimeout] 
+              -b bucket [-k key] -e expiresDays
               [--format] [--trim] [--width] [--height]
               [--accessKeyId] [--secretAccessKey]
               [-V verbose] [--wkhtmltoimage]
-              [--imagemagick] url
+              [--imagemagick] [--url] [url]
 
 DESCRIPTION
    Convert html page specified by 'url' into a jpg image and
    upload it to amazon s3 into the specified 'bucket' and
-   'key'.
+   'key'. Can be run as either a single invocation that uses the
+   command-line options to identify 'url', 'key', etc. to render
+   an html page to an image on s3 -OR- can be launched as a service
+   that listens for messages to be posted to an aws SQS queue. If
+   '--queueUrl' is specified then it will launch as a service.
 
+   -q, --queueUrl
+           url of an aws SQS queue to listen for messages
+   --region
+           aws availability zone of SQS queue
+   --maxNumberOfMessages
+           max number of messages to retrieve and process at a time
+           (default 5)
+   --waitTimeSeconds
+           Amount of time to wait for messages before giving up. 
+           Values > 0 invoke long polling for efficiency.
+           (default 10 seconds)
+   --visibilityTimeout
+           Amount of time before SQS queue will make a message 
+           available to be received again (in case error occurred
+           and the message was not processed then deleted)
+           (default 20 seconds)
    -b, --bucket
            amazon s3 bucket destination
    -k, --key
@@ -154,9 +176,17 @@ function getOptions() {
     displayHelp()
     process.exit()
   }
-  if (!options.bucket || !options.key || !options.url) {
-    console.error('ERROR: -b bucket, -k key, and url are required')
-    process.exit(1)
+  if (options.queueUrl) {
+    if (!options.region) {
+      console.error('ERROR: --region is required when --queueUrl is specified')
+      process.exit(1)
+    }
+  }
+  else {
+    if (!options.bucket || !options.key || !options.url) {
+      console.error('ERROR: -b bucket, -k key, and url are required')
+      process.exit(1)
+    }
   }
   // if (!options.accessKeyId && !process.env.ACCESS_KEY_ID) {
   //   console.error('ERROR: either --accessKeyId option or ACCESS_KEY_ID env var is required')
