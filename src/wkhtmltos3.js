@@ -282,6 +282,10 @@ function uploadToS3(imagepath, options, success, fail) {
         `  complete (${elapsed} ms)\n`,
         `wkhtmltos3: success (${elapsed} ms): ${options.url} => s3:${options.bucket}:${options.key}`
       )
+      fs.remove(imagepath, error => {
+        if (error)
+          console.log(`    warning: failed to delete image: ${error}`)
+      })
       profileLog.addEntry(start, 'complete s3 upload')
       profileLog.addEntry(options.start, 'total')
       success()
@@ -319,6 +323,10 @@ function imagemagickConvert(imagepath, options, success, fail) {
     }
     else {
       profileLog.addEntry(start, 'complete imagemagick convert')
+      fs.remove(imagepath, error => {
+        if (error)
+          console.log(`    warning: failed to delete original image: ${error}`)
+      })
       success(destpath, options)
     }
   })
