@@ -2,7 +2,8 @@
 
 
 const wkhtmltoimage = require('wkhtmltoimage')
-const imagemagick = require('imagemagick');
+const childProcess = require('child_process')
+const imagemagick = require('imagemagick')
 const commandLineArgs = require('command-line-args')
 const AWS = require('aws-sdk')
 const moment = require('moment')
@@ -358,12 +359,21 @@ wkhtmltos3:
     generateOptions.format = options.format
   if (options.wkhtmltoimage)
     Object.assign(generateOptions, options.wkhtmltoimage)
-  if (options.verbose)
-    console.log(`  wkhtmltoimage generate (${JSON.stringify(generateOptions)})...`)
   Object.assign(generateOptions, {output: imagepath})
-  wkhtmltoimage.generate(options.url, generateOptions, function (code, signal) {
-    if (code === 0) {
-      profileLog.addEntry(start, 'complete wkhtmltoimage generate')
+  logger(options, 'log', `  wkhtmltoimage (${JSON.stringify(generateOptions)})...`)
+
+  const child = childProcess.execFile('wkhtmltoimage', ['--zoom', '2.0', options.url, imagepath], (error, stdout, stderr) => {
+    if (error) {
+      logger(options, 'error',
+        `  failed: ${error}\n`,
+        `wkhtmltos3: fail render: ${options.url} => s3:${options.bucket}:${options.key} (${error})`
+      )
+      profileLog.addEntry(start, 'fail wkhtmltoimage')
+    }
+    else {
+      console.log(`=== stdout: ${stdout}`)
+      console.log(`=== stderr: ${stderr}`)
+      profileLog.addEntry(start, 'complete wkhtmltoimage')
       if (options.trim)
         options.imagemagick = ['-trim'].concat(options.imagemagick)
       if (options.imagemagick.length > 0) {
@@ -378,14 +388,33 @@ wkhtmltos3:
         uploadToS3(imagepath, options, success, fail)
       }
     }
-    else {
-      logger(options, 'error',
-        `  failed: code = ${code}${signal ? ` (${signal})`: ''}\n`,
-        `wkhtmltos3: fail render: ${options.url} => s3:${options.bucket}:${options.key} (code = ${code}${signal ? ` (${signal})`: ''})`
-      )
-      profileLog.addEntry(start, 'fail wkhtmltoimage generate')
-    }
-  });
+  })
+
+  // wkhtmltoimage.generate(options.url, generateOptions, function (code, signal) {
+  //   if (code === 0) {
+  //     profileLog.addEntry(start, 'complete wkhtmltoimage generate')
+  //     if (options.trim)
+  //       options.imagemagick = ['-trim'].concat(options.imagemagick)
+  //     if (options.imagemagick.length > 0) {
+  //       imagemagickConvert(imagepath, options,
+  //         function(imagepath, options) {
+  //           uploadToS3(imagepath, options, success, fail)
+  //         },
+  //         fail
+  //       )
+  //     }
+  //     else {
+  //       uploadToS3(imagepath, options, success, fail)
+  //     }
+  //   }
+  //   else {
+  //     logger(options, 'error',
+  //       `  failed: code = ${code}${signal ? ` (${signal})`: ''}\n`,
+  //       `wkhtmltos3: fail render: ${options.url} => s3:${options.bucket}:${options.key} (code = ${code}${signal ? ` (${signal})`: ''})`
+  //     )
+  //     profileLog.addEntry(start, 'fail wkhtmltoimage generate')
+  //   }
+  // });
 }
 
 
