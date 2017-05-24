@@ -8,6 +8,7 @@ const AWS = require('aws-sdk')
 const moment = require('moment')
 const fs = require('fs-extra')
 const path = require('path')
+const clone = require('clone')
 const ProfileLog = require('./profilelog')
 
 
@@ -423,9 +424,10 @@ function listenOnSqsQueue(options) {
         else {
           logger(options, 'log', `receiveMessage: success: message:\n${JSON.stringify(data.Messages.map(function(m) {return JSON.parse(m.Body)}), null, 2)}`)
           for (let message of data.Messages) {
-            Object.assign(options, JSON.parse(message.Body))
+            let messageOptions = clone(options)
+            Object.assign(messageOptions, JSON.parse(message.Body))
             renderPage(
-              options,
+              messageOptions,
               function() {
                 logger(options, 'log', `receiveMessage: delete...`)
                 const deleteParams = {
