@@ -356,6 +356,8 @@ wkhtmltos3:
   expiresDays: ${options.expiresDays ? options.expiresDays : 'never'}
   url:         ${options.url}
 `)
+  let cacheDir = '/tmp/wkhtmltoimage_cache'
+  fs.mkdirsSync(path.dirname(cacheDir))
   let imagepath = `/tmp/${options.key}`
   fs.mkdirsSync(path.dirname(imagepath))
   let generateOptions = {}
@@ -370,7 +372,7 @@ wkhtmltos3:
   Object.assign(generateOptions, {output: imagepath})
   logger(options, 'log', `  wkhtmltoimage (${JSON.stringify(generateOptions)})...`)
 
-  const child = childProcess.execFile('wkhtmltoimage', ['--zoom', '2.0', options.url, imagepath], (error, stdout, stderr) => {
+  const child = childProcess.execFile('wkhtmltoimage', ['--cache-dir', cacheDir, '--zoom', '2.0', options.url, imagepath], (error, stdout, stderr) => {
     if (error) {
       logger(options, 'error',
         `  failed: ${error}\n`,
