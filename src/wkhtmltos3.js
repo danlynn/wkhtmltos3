@@ -369,10 +369,12 @@ wkhtmltos3:
     generateOptions.format = options.format
   if (options.wkhtmltoimage)
     Object.assign(generateOptions, options.wkhtmltoimage)
-  Object.assign(generateOptions, {output: imagepath})
   logger(options, 'log', `  wkhtmltoimage (${JSON.stringify(generateOptions)})...`)
+  Object.assign(generateOptions, {output: imagepath})
 
-  const child = childProcess.execFile('wkhtmltoimage', ['--cache-dir', cacheDir, '--zoom', '2.0', options.url, imagepath], (error, stdout, stderr) => {
+  // Note that --javascript-delay is normally 200 ms.  It is extended
+  // to avoid warnings about an iframe taking to long to load.
+  const child = childProcess.execFile('wkhtmltoimage', ['--javascript-delay', 400, '--cache-dir', cacheDir, '--zoom', '2.0', options.url, imagepath], (error, stdout, stderr) => {
     if (error) {
       logger(options, 'error',
         `  failed: ${error}\n`,
@@ -381,8 +383,8 @@ wkhtmltos3:
       profileLog.addEntry(start, 'fail wkhtmltoimage')
     }
     else {
-      console.log(`=== stdout: ${stdout}`)
-      console.log(`=== stderr: ${stderr}`)
+      // if (options.verbose)
+        console.log(`    === stdout ===\n    ${stdout.replace(/\s\s|\r|\[[=> ]+] \d+%/g, '').replace(/\n/g, '\n    ')}\n    === stderr ===\n    ${stderr.replace(/\s\s|\r|\[[=> ]+] \d+%/g, '').replace(/\n/g, '\n    ')}\n    ==============`)
       profileLog.addEntry(start, 'complete wkhtmltoimage')
       if (options.trim)
         options.imagemagick = ['-trim'].concat(options.imagemagick)
