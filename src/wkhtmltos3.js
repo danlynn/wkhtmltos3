@@ -383,9 +383,17 @@ wkhtmltos3:
       profileLog.addEntry(start, 'fail wkhtmltoimage')
     }
     else {
-      // if (options.verbose)
-        console.log(`    === stdout ===\n    ${stdout.replace(/\s\s|\r|\[[=> ]+] \d+%/g, '').replace(/\n/g, '\n    ')}\n    === stderr ===\n    ${stderr.replace(/\s\s|\r|\[[=> ]+] \d+%/g, '').replace(/\n/g, '\n    ')}\n    ==============`)
       profileLog.addEntry(start, 'complete wkhtmltoimage')
+      // Display output from wkhtmltoimage filtering out normal progress and info
+      // so that only warnings and errors remain.  Note these will always be
+      // displayed regardless of verbose option.
+      const stdoutFiltered = stdout.replace(/\s\s|\r|\[[=> ]+] \d+%/g, '').replace(/\n/g, '\n    ')
+      if (stdoutFiltered.length > 0)
+        console.log(`\n    ${stdoutFiltered}`)
+      const stderrFiltered = stderr.replace(/\s\s|\r|\[[=> ]+] \d+%|Loading page \(\d\/\d\)|Rendering \(\d\/\d\)|Done/g, '').replace(/\n/g, '\n    ')
+      if (stderrFiltered.replace(/\n {4}/g, '').length > 0)
+        console.log(`\n    ${stderrFiltered}`)
+      // invoke imagemagick if needed
       if (options.trim)
         options.imagemagick = ['-trim'].concat(options.imagemagick)
       if (options.imagemagick.length > 0) {
