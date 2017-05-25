@@ -372,9 +372,9 @@ wkhtmltos3:
   logger(options, 'log', `  wkhtmltoimage (${JSON.stringify(generateOptions)})...`)
   Object.assign(generateOptions, {output: imagepath})
 
-  // Note that --javascript-delay normally defaults to 200 ms.  It is
-  // extended to avoid warnings about an iframe taking to long to load.
-  const child = childProcess.execFile('wkhtmltoimage', ['--javascript-delay', 4000, '--cache-dir', cacheDir, '--zoom', '2.0', options.url, imagepath], (error, stdout, stderr) => {
+  // Note that --javascript-delay normally defaults to 200 ms.  It may be extended
+  // to avoid warnings about an iframe taking to long to load - might not help.
+  const child = childProcess.execFile('wkhtmltoimage', ['--cache-dir', cacheDir, '--zoom', '2.0', options.url, imagepath], (error, stdout, stderr) => {
     if (error) {
       logger(options, 'error',
         `  failed: ${error}\n`,
@@ -387,11 +387,11 @@ wkhtmltos3:
       // Display output from wkhtmltoimage filtering out normal progress and info
       // so that only warnings and errors remain.  Note these will always be
       // displayed regardless of verbose option.
-      const stdoutFiltered = stdout.replace(/\s\s|\r|\[[=> ]+] \d+%/g, '').replace(/\n/g, '\n    ')
+      const stdoutFiltered = stdout.replace(/\s\s|\r|\[[=> ]+] \d+%/g, '').replace(/\n$/mg, '').replace(/\n/g, '\n    ')
       if (stdoutFiltered.length > 0)
         console.log(`\n    ${stdoutFiltered}`)
-      const stderrFiltered = stderr.replace(/\s\s|\r|\[[=> ]+] \d+%|Loading page \(\d\/\d\)|Rendering \(\d\/\d\)|Done/g, '').replace(/\n/g, '\n    ')
-      if (stderrFiltered.replace(/\n {4}/g, '').length > 0)
+      const stderrFiltered = stderr.replace(/\s\s|\r|\[[=> ]+] \d+%|Loading page \(\d\/\d\)|Rendering \(\d\/\d\)|Done/g, '').replace(/\n$/mg, '').replace(/\n/g, '\n    ')
+      if (stderrFiltered.length > 0)
         console.log(`\n    ${stderrFiltered}`)
       // invoke imagemagick if needed
       if (options.trim)
