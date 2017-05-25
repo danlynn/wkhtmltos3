@@ -372,9 +372,9 @@ wkhtmltos3:
   logger(options, 'log', `  wkhtmltoimage (${JSON.stringify(generateOptions)})...`)
   Object.assign(generateOptions, {output: imagepath})
 
-  // Note that --javascript-delay is normally 200 ms.  It is extended
-  // to avoid warnings about an iframe taking to long to load.
-  const child = childProcess.execFile('wkhtmltoimage', ['--javascript-delay', 400, '--cache-dir', cacheDir, '--zoom', '2.0', options.url, imagepath], (error, stdout, stderr) => {
+  // Note that --javascript-delay normally defaults to 200 ms.  It is
+  // extended to avoid warnings about an iframe taking to long to load.
+  const child = childProcess.execFile('wkhtmltoimage', ['--javascript-delay', 4000, '--cache-dir', cacheDir, '--zoom', '2.0', options.url, imagepath], (error, stdout, stderr) => {
     if (error) {
       logger(options, 'error',
         `  failed: ${error}\n`,
