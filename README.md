@@ -284,7 +284,7 @@ This is a pretty minimal list.  However, wkhtmltopdf does fully support web font
 If you start the docker container passing the optional `--queueUrl=<queueUrl>` and `--region=<region>` options then wkhtmltos3 will run as a service that runs continuously listening for render messages on the AWS SQS (Simple Queue Service).  Note that the AWS SQS must be setup such that it is backed by Redis (not Memcache).
 
 ```bash
-node src/wkhtmltos3.js -V --queueUrl https://sqs.us-east-1.amazonaws.com/018867421119/dynamic-email-render --region=us-east-1 -b webstop-dynamic-email -e 1 --trim -P
+$ node src/wkhtmltos3.js -V --queueUrl https://sqs.us-east-1.amazonaws.com/018867421119/dynamic-email-render --region=us-east-1 -b webstop-dynamic-email -e 1 --trim -P
 ```
 
 Any options that are passed on the command line when launching as a service will act as defaults which can be overridden by options provided in the render messages.
@@ -293,7 +293,7 @@ The format of the render messages should be as a JSON object where the attribute
 
 Example JSON render messages:
 
-```
+```json
 {"url": "http://api.grocerywebsite.com/retailers/767/coupons/28967/dynamic", "key": "test/queue1.jpg", "trim": true, "imagemagick": ["-trim","-colorspace","Gray", "-edge",1,"-negate"], "wkhtmltoimage": ["--zoom", 2.0]}
 {"url": "http://api.grocerywebsite.com/retailers/767/coupons/28967/dynamic", "key": "test/queue2.jpg", "trim": true, "wkhtmltoimage": ["--zoom", 2.0]}
 {"url": "http://api.grocerywebsite.com/retailers/767/coupons/28967/dynamic", "key": "test/queue3.jpg", "trim": true, "imagemagick": ["-trim","-colorspace","Gray", "-edge",1,"-negate"]}

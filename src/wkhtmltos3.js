@@ -485,10 +485,10 @@ function listenOnSqsQueue(options) {
       }
       else {
         if (!data.Messages) {
-          logger(options, 'log', `receiveMessage: none (data: ${JSON.stringify(data)})`)
+          // logger(options, 'log', `receiveMessage: none (data: ${JSON.stringify(data)})`)
         }
         else {
-          logger(options, 'log', `receiveMessage: success: message:\n${JSON.stringify(data.Messages.map(function(m) {return JSON.parse(m.Body)}), null, 2)}`)
+          logger(options, 'log', `receiveMessage: success: message: \n${JSON.stringify(data.Messages.map(function(m) {return JSON.parse(m.Body)}), null, 2)}`)
           for (let message of data.Messages) {
             let messageOptions = clone(options)
             Object.assign(messageOptions, getOptions(JSON.parse(message.Body)))
