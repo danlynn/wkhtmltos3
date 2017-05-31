@@ -1,7 +1,6 @@
 // TODO: support pdf in addition to image (see: https://www.npmjs.com/package/wkhtmltox)
 
 
-const wkhtmltoimage = require('wkhtmltoimage')
 const childProcess = require('child_process')
 const imagemagick = require('imagemagick')
 const commandLineArgs = require('command-line-args')
@@ -54,7 +53,7 @@ DESCRIPTION
            Amount of time before SQS queue will make a message 
            available to be received again (in case error occurred
            and the message was not processed then deleted)
-           (default 20 seconds)
+           (default 15 seconds)
    -b, --bucket
            amazon s3 bucket destination
    -k, --key
@@ -75,16 +74,18 @@ DESCRIPTION
            explicitly set the height for wkhtmltoimage rendering
    --accessKeyId=ACCESS_KEY_ID
            Amazon accessKeyId that has access to bucket - if not
-           provided then 'ACCESS_KEY_ID' env var will be used
+           provided then 'ACCESS_KEY_ID' env var will be used.
+           If running within the aws environment (ec2, etc)
+           then this value is optional.
    --secretAccessKey=SECRET_ACCESS_KEY
            Amazon secretAccessKey that has access to bucket - if
            not provided then 'SECRET_ACCESS_KEY' env var will be
-           used
+           used. If running within the aws environment (ec2, etc)
+           then this value is optional.
    --wkhtmltoimage
-           options (in json format) to be passed through directly to 
-           the wkhtmltoimage node module. These options are camel-cased 
-           versions of all the regular command-line options 
-           (eg: --wkhtmltoimage='{"zoom": 1.5}'). These options will 
+           options (in json array format) to be passed through directly 
+           to the wkhtmltoimage cli tool as command line options. 
+           (eg: --wkhtmltoimage='["--zoom", 2.0]'). These options will 
            merge into and override any of the regular options 
            (like --width=400, --format=png, etc).
            see: https://wkhtmltopdf.org/usage/wkhtmltopdf.txt
@@ -107,109 +108,123 @@ DESCRIPTION
 }
 
 
+// define command-line options
+const optionDefinitions = [
+  {name: 'queueUrl',     alias: 'q', type: String}, // aws SQS queue name
+  {name: 'region',                   type: String}, // aws region (eg: 'us-east-1')
+  {name: 'maxNumberOfMessages',      type: Number}, // number to process at a time
+  {name: 'waitTimeSeconds',          type: Number}, // >0 causes long polling
+  {name: 'visibilityTimeout',        type: Number}, // allow try again in case of fail
+  {name: 'bucket',       alias: 'b', type: String},
+  {name: 'key',          alias: 'k', type: String},
+  {name: 'expiresDays',  alias: 'e', type: Number},
+  {name: 'format',                   type: String},
+  {name: 'trim',         alias: 't', type: Boolean},
+  {name: 'width',                    type: Number},
+  {name: 'height',                   type: Number},
+  {name: 'accessKeyId',              type: String},
+  {name: 'secretAccessKey',          type: String},
+  {name: 'verbose',      alias: 'V', type: Boolean},
+  {name: 'profile',      alias: 'P', type: Boolean},
+  {name: 'help',         alias: '?', type: Boolean},
+  {name: 'wkhtmltoimage',            type: String},
+  {name: 'imagemagick',              type: String},
+  {name: 'url',                      type: String, defaultOption: true}
+]
+
+
+/**
+ * Validate all of the provided 'options'.
+ *
+ * @param options {Object} options from commandLineArgs
+ * @param fail {function} invoked upon fail (optional)
+ */
+function validateOptions(options, fail = null) {
+  let errors = []
+  if (!options.url)
+    errors.push('--url=URL is required')
+  if (!options.bucket)
+    errors.push('--bucket=BUCKET is required')
+  if (!options.key)
+    errors.push('--key=KEY is required')
+  if (errors.length > 0) {
+    console.error(`ERROR:\n  ${errors.join(`\n  `)}`)
+    if (fail)
+      fail()
+  }
+}
+
+
 /**
  * Parse any command-line options passed to this script into an
  * options object.  Also performs some validation.
  *
  * @see https://www.npmjs.com/package/command-line-args
  *
+ * @param argv {Array} optional argv style array of options to be parsed
+ * @param fail {function} invoked upon fail (optional)
  * @returns {Object} options from command-line
  */
-function getOptions() {
-  // define command-line options
-  const optionDefinitions = [
-    {name: 'queueUrl',     alias: 'q', type: String}, // aws SQS queue name
-    {name: 'region',                   type: String}, // aws region (eg: 'us-east-1')
-    {name: 'maxNumberOfMessages',      type: Number}, // number to process at a time
-    {name: 'waitTimeSeconds',          type: Number}, // >0 causes long polling
-    {name: 'visibilityTimeout',        type: Number}, // allow try again in case of fail
-    {name: 'bucket',       alias: 'b', type: String},
-    {name: 'key',          alias: 'k', type: String},
-    {name: 'expiresDays',  alias: 'e', type: Number},
-    {name: 'format',                   type: String},
-    {name: 'trim',         alias: 't', type: Boolean},
-    {name: 'width',                    type: Number},
-    {name: 'height',                   type: Number},
-    {name: 'accessKeyId',              type: String},
-    {name: 'secretAccessKey',          type: String},
-    {name: 'verbose',      alias: 'V', type: Boolean},
-    {name: 'profile',      alias: 'P', type: Boolean},
-    {name: 'help',         alias: '?', type: Boolean},
-    {name: 'wkhtmltoimage',            type: String},
-    {name: 'imagemagick',              type: String},
-    {name: 'url',                      type: String, defaultOption: true}
-  ]
-
+function getOptions(argv = null, fail = null) {
   // parse command-line args into options object
-  const options = commandLineArgs(optionDefinitions, { partial: true })
+  let commandLineArgsOptions = {partial: true}
+  if (argv)
+    commandLineArgsOptions['argv'] = argv
+  const options = commandLineArgs(optionDefinitions, commandLineArgsOptions)
 
   // check for extra options
   if (options._unknown)
     console.log(`WARNING: unknown extra options: ${JSON.stringify(options._unknown)}`)
 
-  // convert options.wkhtmltoimage from json string into Object instance
+  // convert options.wkhtmltoimage from json string into Array instance
   if (options.wkhtmltoimage) {
     const origValue = options.wkhtmltoimage
     try {
       options.wkhtmltoimage = JSON.parse(options.wkhtmltoimage)
+      if (!options.wkhtmltoimage instanceof Array) {
+        console.error(`ERROR: --wkhtmltoimage json must be an array: ${origValue}`)
+        if (fail)
+          fail()
+      }
     }
     catch (e) {
       console.error(`ERROR: could not parse --wkhtmltoimage json: ${origValue}`)
-      process.exit(1)
+      if (fail)
+        fail()
     }
   }
+  else
+    options.wkhtmltoimage = []
 
   // convert options.imagemagick from json string into Array instance
   if (options.imagemagick) {
     const origValue = options.imagemagick
     try {
       options.imagemagick = JSON.parse(options.imagemagick)
+      if (!options.imagemagick instanceof Array) {
+        console.error(`ERROR: --imagemagick json must be an array: ${origValue}`)
+        if (fail)
+          fail()
+      }
     }
     catch (e) {
       console.error(`ERROR: could not parse --imagemagick json: ${origValue}`)
-      process.exit(1)
-    }
-    if (!options.imagemagick instanceof Array) {
-      console.error(`ERROR: --imagemagick json must be an array: ${origValue}`)
-      process.exit(1)
+      if (fail)
+        fail()
     }
   }
   else
     options.imagemagick = []
 
-  // validations
-  if (options.help || process.argv.length === 2) {
-    displayHelp()
-    process.exit()
-  }
-  if (options.queueUrl) {
-    if (!options.region) {
-      console.error('ERROR: --region is required when --queueUrl is specified')
-      process.exit(1)
-    }
-  }
-  else {
-    if (!options.bucket || !options.key || !options.url) {
-      console.error('ERROR: -b bucket, -k key, and url are required')
-      process.exit(1)
-    }
-  }
-  // if (!options.accessKeyId && !process.env.ACCESS_KEY_ID) {
-  //   console.error('ERROR: either --accessKeyId option or ACCESS_KEY_ID env var is required')
-  //   process.exit(1)
-  // }
-  // if (!options.secretAccessKey && !process.env.SECRET_ACCESS_KEY) {
-  //   console.error('ERROR: either --secretAccessKey option or SECRET_ACCESS_KEY env var is required')
-  //   process.exit(1)
-  // }
-
-  // set profileLog enabled state
-  profileLog.enabled = !!options.profile
-
   return options
 }
 
 
+/**
+ * Get aws config for accessKeyId, secretAccessKey, region.
+ *
+ * @returns {{}} object with aws config attributes
+ */
 function awsConfig() {
   // TODO: check into using: AWS.config.loadFromPath('./config.json')
   // TODO: see: http://docs.aws.amazon.com/sdk-for-javascript/v2/developer-guide/loading-node-credentials-json-file.html
@@ -229,7 +244,20 @@ function awsConfig() {
 }
 
 
-function logger(options, level, verbose_msg, short_msg) {
+/**
+ * Log to either console.log or console.error depending on 'level'
+ * either the 'verbose_msg' or 'short_msg' based upon options.verbose.
+ * If options.verbose then the 'verbose_msg' will be logged if provided.
+ * Otherwise, nothing will be logged.  'short_msg' works the same way but
+ * opposite.  Thus, if only one of the two messages are provided then if
+ * its options.verbose does not match then nothing is logged.
+ *
+ * @param options {{}} command line options object
+ * @param level {string} either 'log' or 'error'
+ * @param verbose_msg {string} optional
+ * @param short_msg {string} optional
+ */
+function logger(options, level, verbose_msg, short_msg = null) {
   const msg = options.verbose ? verbose_msg : short_msg
   if (msg) {
     if (level === 'error')
@@ -337,7 +365,6 @@ function imagemagickConvert(imagepath, options, success, fail) {
  * Render the html page specified by 'url' option to jpg image which
  * is then optionally trimmed then uploaded to Amazon s3.
  *
- * @see https://www.npmjs.com/package/wkhtmltoimage
  * @see http://madalgo.au.dk/~jakobt/wkhtmltoxdoc/wkhtmltoimage_0.10.0_rc2-doc.html
  *
  * @param options {Object} {bucket, key, expiresDays, accessKeyId, secretAccessKey, verbose, url}
@@ -345,6 +372,11 @@ function imagemagickConvert(imagepath, options, success, fail) {
  * @param fail {function} invoked upon fail
  */
 function renderPage(options, success, fail) {
+  validateOptions(options, fail)
+
+  // set profileLog enabled state
+  profileLog.enabled = !!options.profile
+
   const start = new Date()
   options.start = start
   if (options.verbose)
@@ -360,21 +392,21 @@ wkhtmltos3:
   fs.mkdirsSync(path.dirname(cacheDir))
   let imagepath = `/tmp/${options.key}`
   fs.mkdirsSync(path.dirname(imagepath))
-  let generateOptions = {}
+  let generateOptions = []
   if (options.width)
-    generateOptions.width = String(options.width)
+    generateOptions.push('--width', String(options.width))
   if (options.height)
-    generateOptions.height = String(options.height)
+    generateOptions.push('--height', String(options.height))
   if (options.format)
-    generateOptions.format = options.format
+    generateOptions.push('--format', options.format)
   if (options.wkhtmltoimage)
-    Object.assign(generateOptions, options.wkhtmltoimage)
+    generateOptions = generateOptions.concat(options.wkhtmltoimage)
   logger(options, 'log', `  wkhtmltoimage (${JSON.stringify(generateOptions)})...`)
-  Object.assign(generateOptions, {output: imagepath})
+  generateOptions = generateOptions.concat(['--cache-dir', cacheDir, options.url, imagepath])
 
   // Note that --javascript-delay normally defaults to 200 ms.  It may be extended
   // to avoid warnings about an iframe taking to long to load - might not help.
-  const child = childProcess.execFile('wkhtmltoimage', ['--cache-dir', cacheDir, '--zoom', '2.0', options.url, imagepath], (error, stdout, stderr) => {
+  const child = childProcess.execFile('wkhtmltoimage', generateOptions, (error, stdout, stderr) => {
     if (error) {
       logger(options, 'error',
         `  failed: ${error}\n`,
@@ -387,12 +419,12 @@ wkhtmltos3:
       // Display output from wkhtmltoimage filtering out normal progress and info
       // so that only warnings and errors remain.  Note these will always be
       // displayed regardless of verbose option.
-      const stdoutFiltered = stdout.replace(/\s\s|\r|\[[=> ]+] \d+%/g, '').replace(/\n$/mg, '').replace(/\n/g, '\n    ')
+      const stdoutFiltered = stdout.replace(/\s\s|\r|\[[=> ]+] \d+%/g, '').replace(/^\n|\n$/mg, '').replace(/\n/g, '\n    ')
       if (stdoutFiltered.length > 0)
-        console.log(`\n    ${stdoutFiltered}`)
-      const stderrFiltered = stderr.replace(/\s\s|\r|\[[=> ]+] \d+%|Loading page \(\d\/\d\)|Rendering \(\d\/\d\)|Done/g, '').replace(/\n$/mg, '').replace(/\n/g, '\n    ')
+        console.log(`    ${stdoutFiltered}`)
+      const stderrFiltered = stderr.replace(/\s\s|\r|\[[=> ]+] \d+%|Loading page \(\d\/\d\)|Rendering \(\d\/\d\)|Done/g, '').replace(/^\n|\n$/mg, '').replace(/\n/g, '\n    ')
       if (stderrFiltered.length > 0)
-        console.log(`\n    ${stderrFiltered}`)
+        console.log(`    ${stderrFiltered}`)
       // invoke imagemagick if needed
       if (options.trim)
         options.imagemagick = ['-trim'].concat(options.imagemagick)
@@ -409,32 +441,6 @@ wkhtmltos3:
       }
     }
   })
-
-  // wkhtmltoimage.generate(options.url, generateOptions, function (code, signal) {
-  //   if (code === 0) {
-  //     profileLog.addEntry(start, 'complete wkhtmltoimage generate')
-  //     if (options.trim)
-  //       options.imagemagick = ['-trim'].concat(options.imagemagick)
-  //     if (options.imagemagick.length > 0) {
-  //       imagemagickConvert(imagepath, options,
-  //         function(imagepath, options) {
-  //           uploadToS3(imagepath, options, success, fail)
-  //         },
-  //         fail
-  //       )
-  //     }
-  //     else {
-  //       uploadToS3(imagepath, options, success, fail)
-  //     }
-  //   }
-  //   else {
-  //     logger(options, 'error',
-  //       `  failed: code = ${code}${signal ? ` (${signal})`: ''}\n`,
-  //       `wkhtmltos3: fail render: ${options.url} => s3:${options.bucket}:${options.key} (code = ${code}${signal ? ` (${signal})`: ''})`
-  //     )
-  //     profileLog.addEntry(start, 'fail wkhtmltoimage generate')
-  //   }
-  // });
 }
 
 
@@ -444,7 +450,18 @@ function listenOnSqsQueue(options) {
   const queueUrl = options.queueUrl
   const maxNumberOfMessages = options.maxNumberOfMessages || 5
   const waitTimeSeconds = options.waitTimeSeconds || 10
-  const visibilityTimeout = options.visibilityTimeout || 20
+  const visibilityTimeout = options.visibilityTimeout || 15
+
+  console.log(`  queueUrl:            ${queueUrl}`)
+  console.log(`  region:              ${options.region}`)
+  console.log(`  maxNumberOfMessages: ${maxNumberOfMessages}`)
+  console.log(`  waitTimeSeconds:     ${waitTimeSeconds}`)
+  console.log(`  visibilityTimeout:   ${visibilityTimeout}`)
+
+  if (!options.region) {
+    console.error('ERROR: --region is required when --queueUrl is specified')
+    process.exit(1)
+  }
 
   const sqs = new AWS.SQS(awsConfig())
 
@@ -462,7 +479,7 @@ function listenOnSqsQueue(options) {
 
   function receiveMessage() {
     sqs.receiveMessage(params, function(error, data) {
-      setImmediate(receiveMessage) // loop
+      setImmediate(receiveMessage) // loop as soon as message received/timeout/error
       if (error) {
         console.log(`receiveMessage: fail: ${error}`)
       }
@@ -474,7 +491,7 @@ function listenOnSqsQueue(options) {
           logger(options, 'log', `receiveMessage: success: message:\n${JSON.stringify(data.Messages.map(function(m) {return JSON.parse(m.Body)}), null, 2)}`)
           for (let message of data.Messages) {
             let messageOptions = clone(options)
-            Object.assign(messageOptions, JSON.parse(message.Body))
+            Object.assign(messageOptions, getOptions(JSON.parse(message.Body)))
             renderPage(
               messageOptions,
               function() {
@@ -507,7 +524,12 @@ function listenOnSqsQueue(options) {
 
 
 // ===== main =======================================================
-const options = getOptions()
+const options = getOptions(null, () => {process.exit(1)})
+
+if (options.help || process.argv.length === 2) {
+  displayHelp()
+  process.exit()
+}
 
 if (options.queueUrl) {
   listenOnSqsQueue(options) // run forever
