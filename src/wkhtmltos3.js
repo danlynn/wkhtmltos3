@@ -23,7 +23,7 @@ NAME
 SYNOPSIS
    wkhtmltos3 [-q queueUrl] [--region] [--maxNumberOfMessages] 
               [--waitTimeSeconds] [--waitTimeSeconds] [--visibilityTimeout] 
-              -b bucket [-k key] -e expiresDays
+              -b bucket [-k key]
               [--format] [--trim] [--width] [--height]
               [--accessKeyId] [--secretAccessKey]
               [-V verbose] [--wkhtmltoimage]
@@ -38,29 +38,27 @@ DESCRIPTION
    that listens for messages to be posted to an aws SQS queue. If
    '--queueUrl' is specified then it will launch as a service.
 
-   -q, --queueUrl
+   -q, --queueUrl=queueUrl
            url of an aws SQS queue to listen for messages
-   --region
+   --region=region_name
            aws availability zone of SQS queue
-   --maxNumberOfMessages
+   --maxNumberOfMessages=number
            max number of messages to retrieve and process at a time
            (default 5)
-   --waitTimeSeconds
+   --waitTimeSeconds=number
            Amount of time to wait for messages before giving up. 
            Values > 0 invoke long polling for efficiency.
            (default 10 seconds)
-   --visibilityTimeout
+   --visibilityTimeout=number
            Amount of time before SQS queue will make a message 
            available to be received again (in case error occurred
            and the message was not processed then deleted)
            (default 15 seconds)
-   -b, --bucket
+   -b, --bucket=bucket_name
            amazon s3 bucket destination
-   -k, --key
+   -k, --key=filename
            key in amazon s3 bucket
-   -e, --expiresDays
-           number of days after which s3 should delete the file
-   --format
+   --format=format
            image file format (default is jpg)
    --trim
            use imagemagick's trim command to automatically crop
@@ -68,9 +66,9 @@ DESCRIPTION
            to 1024 wide and the height usually has some padding 
            too
            see: http://www.imagemagick.org/Usage/crop/#trim
-   --width
+   --width=pixels
            explicitly set the width for wkhtmltoimage rendering
-   --height
+   --height=pixels
            explicitly set the height for wkhtmltoimage rendering
    --accessKeyId=ACCESS_KEY_ID
            Amazon accessKeyId that has access to bucket - if not
@@ -82,20 +80,20 @@ DESCRIPTION
            not provided then 'SECRET_ACCESS_KEY' env var will be
            used. If running within the aws environment (ec2, etc)
            then this value is optional.
-   --wkhtmltoimage
+   --wkhtmltoimage=json_array
            options (in json array format) to be passed through directly 
            to the wkhtmltoimage cli tool as command line options. 
            (eg: --wkhtmltoimage='["--zoom", 2.0]'). These options will 
            merge into and override any of the regular options 
            (like --width=400, --format=png, etc).
            see: https://wkhtmltopdf.org/usage/wkhtmltopdf.txt
-   --imagemagick
+   --imagemagick=json_array
            options (in json array format) to be passed through directly
            to the imagemagick node module. This is a highly flexible
            way to perform additional image manipulation on the rendered
            html page. (eg: --imagemagick='["-trim","-colorspace","Gray",
            "-edge",1,"-negate"]')
-   --url
+   --url=url
            optionally explicitly identify the url instead of just
            tacking it on the end of the command-line options
    -V, --verbose
@@ -117,7 +115,6 @@ const optionDefinitions = [
   {name: 'visibilityTimeout',        type: Number}, // allow try again in case of fail
   {name: 'bucket',       alias: 'b', type: String},
   {name: 'key',          alias: 'k', type: String},
-  {name: 'expiresDays',  alias: 'e', type: Number},
   {name: 'format',                   type: String},
   {name: 'trim',         alias: 't', type: Boolean},
   {name: 'width',                    type: Number},
@@ -137,9 +134,9 @@ const optionDefinitions = [
  * Validate all of the provided 'options'.
  *
  * @param options {Object} options from commandLineArgs
- * @param fail {function} invoked upon fail (optional)
+ * @returns {boolean} true if valid - else false
  */
-function validateOptions(options, fail = null) {
+function validateOptions(options) {
   let errors = []
   if (!options.url)
     errors.push('--url=URL is required')
@@ -149,9 +146,9 @@ function validateOptions(options, fail = null) {
     errors.push('--key=KEY is required')
   if (errors.length > 0) {
     console.error(`ERROR:\n  ${errors.join(`\n  `)}`)
-    if (fail)
-      fail()
+    return false
   }
+  return true
 }
 
 
@@ -274,7 +271,7 @@ function logger(options, level, verbose_msg, short_msg = null) {
  * @see https://www.npmjs.com/package/s3
  *
  * @param imagepath {string} path of file to be uploaded to s3
- * @param options {Object} {bucket, key, expiresDays, accessKeyId, secretAccessKey, verbose, url}
+ * @param options {Object} {bucket, key, accessKeyId, secretAccessKey, verbose, url}
  * @param success {function} invoked upon success
  * @param fail {function} invoked upon fail
  */
@@ -282,19 +279,23 @@ function uploadToS3(imagepath, options, success, fail) {
   const start = new Date()
   if (options.verbose)
     console.log(`  uploading ${fs.statSync(imagepath).size/1000.0}k to s3...`)
-  let expiresDate = null
-  if (options.expiresDays)
-    expiresDate = moment().add(options.expiresDays, 'days').toDate()
 
   const S3 = new AWS.S3(awsConfig());
+
+  let contentType = 'image/*'
+  if (!options.format)
+    contentType = 'image/jpeg'
+  else if (options.format === 'png')
+    contentType = 'image/png'
+  else if (options.format === 'gif')
+    contentType = 'image/gif'
 
   S3.putObject({
     Bucket: options.bucket,
     Key: options.key,
     Body: fs.createReadStream(imagepath),
-    ContentType: 'image/jpeg',
-    ACL: "public-read",
-    Expires: expiresDate
+    ContentType: contentType,
+    ACL: "public-read"
   }, (error) => {
     if (error) {
       logger(options, 'error',
@@ -330,7 +331,7 @@ function uploadToS3(imagepath, options, success, fail) {
  * @see https://www.npmjs.com/package/imagemagick
  *
  * @param imagepath {string} path of image file to be trimmed
- * @param options {Object} {bucket, key, expiresDays, accessKeyId, secretAccessKey, verbose, url}
+ * @param options {Object} {bucket, key, accessKeyId, secretAccessKey, verbose, url}
  * @param success {function} invoked upon success passing (destpath, options)
  * @param fail {function} invoked upon fail
  */
@@ -367,80 +368,99 @@ function imagemagickConvert(imagepath, options, success, fail) {
  *
  * @see http://madalgo.au.dk/~jakobt/wkhtmltoxdoc/wkhtmltoimage_0.10.0_rc2-doc.html
  *
- * @param options {Object} {bucket, key, expiresDays, accessKeyId, secretAccessKey, verbose, url}
+ * @param options {Object} {bucket, key, accessKeyId, secretAccessKey, verbose, url}
  * @param success {function} invoked upon success
  * @param fail {function} invoked upon fail
  */
 function renderPage(options, success, fail) {
-  validateOptions(options, fail)
+  if (validateOptions(options)) {
+    // set profileLog enabled state
+    profileLog.enabled = !!options.profile
 
-  // set profileLog enabled state
-  profileLog.enabled = !!options.profile
-
-  const start = new Date()
-  options.start = start
-  if (options.verbose)
-    console.log(`
+    const start = new Date()
+    options.start = start
+    if (options.verbose)
+      console.log(`
 wkhtmltos3:
   bucket:      ${options.bucket}
   key:         ${options.key}
   format:      ${options.format || 'jpg'}
-  expiresDays: ${options.expiresDays ? options.expiresDays : 'never'}
   url:         ${options.url}
 `)
-  let cacheDir = '/tmp/wkhtmltoimage_cache'
-  fs.mkdirsSync(path.dirname(cacheDir))
-  let imagepath = `/tmp/${options.key}`
-  fs.mkdirsSync(path.dirname(imagepath))
-  let generateOptions = []
-  if (options.width)
-    generateOptions.push('--width', String(options.width))
-  if (options.height)
-    generateOptions.push('--height', String(options.height))
-  if (options.format)
-    generateOptions.push('--format', options.format)
-  if (options.wkhtmltoimage)
-    generateOptions = generateOptions.concat(options.wkhtmltoimage)
-  logger(options, 'log', `  wkhtmltoimage (${JSON.stringify(generateOptions)})...`)
-  generateOptions = generateOptions.concat(['--cache-dir', cacheDir, options.url, imagepath])
+    let cacheDir = '/tmp/wkhtmltoimage_cache'
+    fs.mkdirsSync(path.dirname(cacheDir))
+    let imagepath = `/tmp/${options.key}`
+    fs.mkdirsSync(path.dirname(imagepath))
+    let generateOptions = []
+    if (options.width)
+      generateOptions.push('--width', String(options.width))
+    if (options.height)
+      generateOptions.push('--height', String(options.height))
+    if (options.format)
+      generateOptions.push('--format', options.format)
+    if (options.wkhtmltoimage)
+      generateOptions = generateOptions.concat(options.wkhtmltoimage)
+    logger(options, 'log', `  wkhtmltoimage (${JSON.stringify(generateOptions)})...`)
+    generateOptions = generateOptions.concat(['--cache-dir', cacheDir, options.url, imagepath])
 
-  // Note that --javascript-delay normally defaults to 200 ms.  It may be extended
-  // to avoid warnings about an iframe taking to long to load - might not help.
-  const child = childProcess.execFile('wkhtmltoimage', generateOptions, (error, stdout, stderr) => {
-    if (error) {
-      logger(options, 'error',
-        `  failed: ${error}\n`,
-        `wkhtmltos3: fail render: ${options.url} => s3:${options.bucket}:${options.key} (${error})`
-      )
-      profileLog.addEntry(start, 'fail wkhtmltoimage')
-    }
-    else {
-      profileLog.addEntry(start, 'complete wkhtmltoimage')
-      // Display output from wkhtmltoimage filtering out normal progress and info
-      // so that only warnings and errors remain.  Note these will always be
-      // displayed regardless of verbose option.
-      const stdoutFiltered = stdout.replace(/\s\s|\r|\[[=> ]+] \d+%/g, '').replace(/^\n|\n$/mg, '').replace(/\n/g, '\n    ')
-      if (stdoutFiltered.length > 0)
-        console.log(`    ${stdoutFiltered}`)
-      const stderrFiltered = stderr.replace(/\s\s|\r|\[[=> ]+] \d+%|Loading page \(\d\/\d\)|Rendering \(\d\/\d\)|Done/g, '').replace(/^\n|\n$/mg, '').replace(/\n/g, '\n    ')
-      if (stderrFiltered.length > 0)
-        console.log(`    ${stderrFiltered}`)
-      // invoke imagemagick if needed
-      if (options.trim)
-        options.imagemagick = ['-trim'].concat(options.imagemagick)
-      if (options.imagemagick.length > 0) {
-        imagemagickConvert(imagepath, options,
-          function(imagepath, options) {
-            uploadToS3(imagepath, options, success, fail)
-          },
-          fail
+    // Note that --javascript-delay normally defaults to 200 ms.  It may be extended
+    // to avoid warnings about an iframe taking to long to load - might not help.
+    const child = childProcess.execFile('wkhtmltoimage', generateOptions, (error, stdout, stderr) => {
+      if (error) {
+        logger(options, 'error',
+          `  failed: ${error}\n`,
+          `wkhtmltos3: fail render: ${options.url} => s3:${options.bucket}:${options.key} (${error})`
         )
+        profileLog.addEntry(start, 'fail wkhtmltoimage')
       }
       else {
-        uploadToS3(imagepath, options, success, fail)
+        profileLog.addEntry(start, 'complete wkhtmltoimage')
+        // Display output from wkhtmltoimage filtering out normal progress and info
+        // so that only warnings and errors remain.  Note these will always be
+        // displayed regardless of verbose option.
+        const stdoutFiltered = stdout.replace(/\s\s|\r|\[[=> ]+] \d+%/g, '').replace(/^\n|\n$/mg, '').replace(/\n/g, '\n    - ')
+        if (stdoutFiltered.length > 0)
+          console.log(`    - ${stdoutFiltered}`)
+        const stderrFiltered = stderr.replace(/\s\s|\r|\[[=> ]+] \d+%|Loading page \(\d\/\d\)|Rendering \(\d\/\d\)|Done/g, '').replace(/^\n|\n$/mg, '').replace(/\n/g, '\n    - ')
+        if (stderrFiltered.length > 0)
+          console.log(`    - ${stderrFiltered}`)
+        // invoke imagemagick if needed
+        if (options.trim)
+          options.imagemagick = ['-trim'].concat(options.imagemagick)
+        if (options.imagemagick.length > 0) {
+          imagemagickConvert(imagepath, options,
+            function(imagepath, options) {
+              uploadToS3(imagepath, options, success, fail)
+            },
+            fail
+          )
+        }
+        else {
+          uploadToS3(imagepath, options, success, fail)
+        }
       }
-    }
-  })
+    })
+  }
+  else {
+    fail()
+  }
+}
+
+
+/**
+ * Merge the attributes of 'overrides' into 'options'.  Any values in
+ * 'overrides' will completely replace any existing values in 'options'
+ * in the new options object returned.  Note that the original 'options'
+ * is left untouched.
+ *
+ * @param options {Object} original commandLineArgs options
+ * @param overrides {Object} attributes to be merged into 'options'
+ * @return {Object} new object cloned from 'options' with 'overrides' merged in
+ */
+function mergeOptions(options, overrides) {
+  let newOptions = clone(options)
+  Object.assign(newOptions, overrides)
+  return newOptions
 }
 
 
@@ -488,12 +508,10 @@ function listenOnSqsQueue(options) {
           // logger(options, 'log', `receiveMessage: none (data: ${JSON.stringify(data)})`)
         }
         else {
-          logger(options, 'log', `receiveMessage: success: message: \n${JSON.stringify(data.Messages.map(function(m) {return JSON.parse(m.Body)}), null, 2)}`)
+          logger(options, 'log', `receiveMessage: success: messages: \n${JSON.stringify(data.Messages.map(function(m) {return JSON.parse(m.Body)}), null, 2)}`)
           for (let message of data.Messages) {
-            let messageOptions = clone(options)
-            Object.assign(messageOptions, getOptions(JSON.parse(message.Body)))
             renderPage(
-              messageOptions,
+              mergeOptions(options, JSON.parse(message.Body)),
               function() {
                 logger(options, 'log', `receiveMessage: delete...`)
                 const deleteParams = {

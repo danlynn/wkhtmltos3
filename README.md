@@ -7,7 +7,7 @@
 + [`1.1.0` (1.1.0/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.1.0/Dockerfile)
 + [`1.0.0` (1.0.0/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.0.0/Dockerfile)
 
-This image will execute [wkhtmltoimage](https://wkhtmltopdf.org) to render an html page specified by an URL to a jpg image and then upload that image to s3.
+This image will execute [wkhtmltoimage](https://wkhtmltopdf.org) to render an html page specified by an URL to a jpg image and then upload that image to s3.  Alternatively, this container can be launched as a service which listens to an AWS SQS queue for render messages instead of running as a cli command that renders on html page into an image then exits.
 
 Note: The current version only supports rendering images.  Stay tuned for a future release that also supports rendering to PDF.
 
@@ -26,7 +26,6 @@ wkhtmltos3:
   bucket:      my-unique-bucket
   key:         123/profile12345.jpg
   format:      jpg
-  expiresDays: 1
   url:         http://some.com/retailers/123/users/12345/profile.html
 
   wkhtmltoimage generate ({})...
@@ -43,7 +42,6 @@ $ docker run --rm danlynn/wkhtmltos3 -V -b my-unique-bucket -k 123/profile12345.
 wkhtmltos3:
   bucket:      my-unique-bucket
   key:         123/profile12345.jpg
-  expiresDays: never
   url:         http://some.com/retailers/123/users/12345/profile.html
 
   rendering jpg...
@@ -80,7 +78,7 @@ NAME
 SYNOPSIS
    wkhtmltos3 [-q queueUrl] [--region] [--maxNumberOfMessages] 
               [--waitTimeSeconds] [--waitTimeSeconds] [--visibilityTimeout] 
-              -b bucket [-k key] -e expiresDays
+              -b bucket [-k key]
               [--format] [--trim] [--width] [--height]
               [--accessKeyId] [--secretAccessKey]
               [-V verbose] [--wkhtmltoimage]
@@ -95,29 +93,27 @@ DESCRIPTION
    that listens for messages to be posted to an aws SQS queue. If
    '--queueUrl' is specified then it will launch as a service.
 
-   -q, --queueUrl
+   -q, --queueUrl=queueUrl
            url of an aws SQS queue to listen for messages
-   --region
+   --region=region_name
            aws availability zone of SQS queue
-   --maxNumberOfMessages
+   --maxNumberOfMessages=number
            max number of messages to retrieve and process at a time
            (default 5)
-   --waitTimeSeconds
+   --waitTimeSeconds=number
            Amount of time to wait for messages before giving up. 
            Values > 0 invoke long polling for efficiency.
            (default 10 seconds)
-   --visibilityTimeout
+   --visibilityTimeout=number
            Amount of time before SQS queue will make a message 
            available to be received again (in case error occurred
            and the message was not processed then deleted)
            (default 15 seconds)
-   -b, --bucket
+   -b, --bucket=bucket_name
            amazon s3 bucket destination
-   -k, --key
+   -k, --key=filename
            key in amazon s3 bucket
-   -e, --expiresDays
-           number of days after which s3 should delete the file
-   --format
+   --format=format
            image file format (default is jpg)
    --trim
            use imagemagick's trim command to automatically crop
@@ -125,9 +121,9 @@ DESCRIPTION
            to 1024 wide and the height usually has some padding 
            too
            see: http://www.imagemagick.org/Usage/crop/#trim
-   --width
+   --width=pixels
            explicitly set the width for wkhtmltoimage rendering
-   --height
+   --height=pixels
            explicitly set the height for wkhtmltoimage rendering
    --accessKeyId=ACCESS_KEY_ID
            Amazon accessKeyId that has access to bucket - if not
@@ -139,20 +135,20 @@ DESCRIPTION
            not provided then 'SECRET_ACCESS_KEY' env var will be
            used. If running within the aws environment (ec2, etc)
            then this value is optional.
-   --wkhtmltoimage
+   --wkhtmltoimage=json_array
            options (in json array format) to be passed through directly 
            to the wkhtmltoimage cli tool as command line options. 
            (eg: --wkhtmltoimage='["--zoom", 2.0]'). These options will 
            merge into and override any of the regular options 
            (like --width=400, --format=png, etc).
            see: https://wkhtmltopdf.org/usage/wkhtmltopdf.txt
-   --imagemagick
+   --imagemagick=json_array
            options (in json array format) to be passed through directly
            to the imagemagick node module. This is a highly flexible
            way to perform additional image manipulation on the rendered
            html page. (eg: --imagemagick='["-trim","-colorspace","Gray",
            "-edge",1,"-negate"]')
-   --url
+   --url=url
            optionally explicitly identify the url instead of just
            tacking it on the end of the command-line options
    -V, --verbose
@@ -179,29 +175,28 @@ However, if the automatic nature of this feature doesn't work for the types of h
 
 ### Pass-through config options
 
-The `--wkhtmltoimage` and `--imagemagick` options allow you to pass through options directly to the wkhtmltoimage and imagemagick node modules. This exposes some really useful options.
+The `--wkhtmltoimage` and `--imagemagick` options allow you to pass through options directly to the wkhtmltoimage binary and imagemagick node module. This exposes some really useful capabilities.
 
 #### --wkhtmltoimage options
 
 For example, for wkhtmltoimage, you can specify that the image should be zoomed by 200% in order to produce retina resolution images.
 
 ```bash
-$ docker run --rm -e ACCESS_KEY_ID=AKIA000NOTREALKEY000 -e SECRET_ACCESS_KEY=l2r+0000000NotRealSecretAccessKey0000000 danlynn/wkhtmltos3 -V -b my-unique-bucket -k 123/profile12345.jpg -e 1 --wkhtmltoimage='{"zoom": 2.0}' 'http://some.com/retailers/123/users/12345/profile.html'
+$ docker run --rm -e ACCESS_KEY_ID=AKIA000NOTREALKEY000 -e SECRET_ACCESS_KEY=l2r+0000000NotRealSecretAccessKey0000000 danlynn/wkhtmltos3 -V -b my-unique-bucket -k 123/profile12345.jpg -e 1 --wkhtmltoimage='["zoom": 2.0]' 'http://some.com/retailers/123/users/12345/profile.html'
 
 wkhtmltos3:
   bucket:      my-unique-bucket
   key:         123/profile12345.jpg
   format:      jpg
-  expiresDays: 1
   url:         http://some.com/retailers/123/users/12345/profile.html
 
-  wkhtmltoimage generate ({"zoom": 2.0})...
+  wkhtmltoimage generate (["zoom": 2.0])...
   imagemagick convert ([])...
   uploading 32.57k to s3...
   complete
 ```
 
-You can see all of the wkhtmltopdf/wkhtmltoimage options on the wkhtmltopdf website.  Keep in mind that the wkhtmltoimage node module requires you to provide all the hypenated options (as seen in the [options reference](https://wkhtmltopdf.org/usage/wkhtmltopdf.txt)) as camel-cased instead (weird).  For example, if the following 2 options from the wkhtmltopdf reference page would be passed to the regular wkhtmltoimage like `--no-stop-slow-scripts --zoom 2.0`, then they should be passed in the wkhtmltos3 --wkhtmltoimage option as a json object like `{"noStopSlowScripts": true, "zoom": 2.0}` instead.
+You can see all of the wkhtmltopdf/wkhtmltoimage options on the wkhtmltopdf website.
 
 options reference: [https://wkhtmltopdf.org/usage/wkhtmltopdf.txt](https://wkhtmltopdf.org/usage/wkhtmltopdf.txt)
 
@@ -220,7 +215,6 @@ wkhtmltos3:
   bucket:      my-unique-bucket
   key:         123/14106.jpg
   format:      jpg
-  expiresDays: 1
   url:         http://some.com/retailers/123/coupons/14106
 
   wkhtmltoimage generate ({})...
@@ -287,9 +281,9 @@ If you start the docker container passing the optional `--queueUrl=<queueUrl>` a
 $ node src/wkhtmltos3.js -V --queueUrl https://sqs.us-east-1.amazonaws.com/018867421119/dynamic-email-render --region=us-east-1 -b webstop-dynamic-email -e 1 --trim -P
 ```
 
-Any options that are passed on the command line when launching as a service will act as defaults which can be overridden by options provided in the render messages.
+Any options that are passed on the command line when launching as a service will act as defaults which will be overridden by options provided in the render messages.
 
-The format of the render messages should be as a JSON object where the attributes names are the long names of the wkhtmltos3 command line options and the values are as defined in the help `-?`.
+The format of the render messages should be as a JSON object where the attribute names are the long names of the wkhtmltos3 command line options and the values are as defined in the help `-?`.
 
 Example JSON render messages:
 
@@ -332,7 +326,6 @@ wkhtmltos3:
   bucket:      my-unique-bucket
   key:         123/profile12345.jpg
   format:      jpg
-  expiresDays: 1
   url:         http://some.com/retailers/123/users/12345/profile.html
 
   wkhtmltoimage generate ({})...
