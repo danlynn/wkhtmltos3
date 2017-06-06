@@ -7,7 +7,11 @@
     "build": "npm install",
     "test":  "echo \"Error: no test specified\" && exit 1"
   },
-  "author": "",
+  "author": "git@danlynn.org",
+  "repository": {
+    "type" : "git",
+    "url" : "https://github.com/danlynn/wkhtmltos3"
+  },
   "license": "MIT",
   "dependencies": {
     "wkhtmltoimage": "0.1.5",
@@ -17,6 +21,6 @@
     "command-line-args": "4.0.3",
     "imagemagick": "0.1.3",
     "clone": "2.1.1",
-    "profilelog": "danlynn/profilelog"
+    "profilelog": "danlynn/profilelog#1.0.0"
   }
 }
