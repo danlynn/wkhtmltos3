@@ -1,6 +1,7 @@
 ### Supported tags and respective `Dockerfile` links
 
-+ [`1.5.0`,`latest` (1.5.0/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.5.0/Dockerfile)
++ [`1.6.0`,`latest` (1.6.0/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.6.0/Dockerfile)
++ [`1.5.0` (1.5.0/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.5.0/Dockerfile)
 + [`1.4.0` (1.4.0/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.4.0/Dockerfile)
 + [`1.3.0` (1.3.0/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.3.0/Dockerfile)
 + [`1.2.0` (1.2.0/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.2.0/Dockerfile)
