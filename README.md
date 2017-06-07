@@ -1,3 +1,8 @@
+This image will execute [wkhtmltoimage](https://wkhtmltopdf.org) to render an html page specified by an URL to a jpg image and then upload that image to s3.  Alternatively, this container can be launched as a service which listens to an AWS SQS queue for render messages instead of running as a cli command that renders on html page into an image then exits.
+
+![stars](https://img.shields.io/docker/stars/danlynn/wkhtmltos3.svg) ![pulls](https://img.shields.io/docker/pulls/danlynn/wkhtmltos3.svg) ![automated](https://img.shields.io/docker/automated/danlynn/wkhtmltos3.svg) ![automated](https://img.shields.io/docker/build/danlynn/wkhtmltos3.svg)
+
+
 ### Supported tags and respective `Dockerfile` links
 
 + [`1.6.0`,`latest` (1.6.0/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.6.0/Dockerfile)
@@ -7,8 +12,6 @@
 + [`1.2.0` (1.2.0/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.2.0/Dockerfile)
 + [`1.1.0` (1.1.0/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.1.0/Dockerfile)
 + [`1.0.0` (1.0.0/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.0.0/Dockerfile)
-
-This image will execute [wkhtmltoimage](https://wkhtmltopdf.org) to render an html page specified by an URL to a jpg image and then upload that image to s3.  Alternatively, this container can be launched as a service which listens to an AWS SQS queue for render messages instead of running as a cli command that renders on html page into an image then exits.
 
 Note: The current version only supports rendering images.  Stay tuned for a future release that also supports rendering to PDF.
 
