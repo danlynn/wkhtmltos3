@@ -21,7 +21,7 @@ The wkhtmltos3 image was originally developed to be invoked as an Amazon EC2 Con
 Assuming that you have [Docker installed](https://www.docker.com/community-edition) locally, the wkhtmltos3 docker container can be invoked as follows:
 
 ```bash
-$ docker run --rm -e ACCESS_KEY_ID=AKIA000NOTREALKEY000 -e SECRET_ACCESS_KEY=l2r+0000000NotRealSecretAccessKey0000000 danlynn/wkhtmltos3 -V -b my-unique-bucket -k 123/profile12345.jpg -e 1 'http://some.com/retailers/123/users/12345/profile.html'
+$ docker run --rm -e ACCESS_KEY_ID=AKIA000NOTREALKEY000 -e SECRET_ACCESS_KEY=l2r+0000000NotRealSecretAccessKey0000000 danlynn/wkhtmltos3 -V -b my-unique-bucket -k 123/profile12345.jpg 'http://some.com/retailers/123/users/12345/profile.html'
 
 wkhtmltos3:
   bucket:      my-unique-bucket
@@ -38,7 +38,7 @@ wkhtmltos3:
 Note, however, that the ACCESS_KEY_ID and SECRET_ACCESS_KEY environment variables can also be passed as command-line options like:
 
 ```bash
-$ docker run --rm danlynn/wkhtmltos3 -V -b my-unique-bucket -k 123/profile12345.jpg -e 1 --accessKeyId=AKIA000NOTREALKEY000 --secretAccessKey=l2r+0000000NotRealSecretAccessKey0000000 'http://some.com/retailers/123/users/12345/profile.html'
+$ docker run --rm danlynn/wkhtmltos3 -V -b my-unique-bucket -k 123/profile12345.jpg --accessKeyId=AKIA000NOTREALKEY000 --secretAccessKey=l2r+0000000NotRealSecretAccessKey0000000 'http://some.com/retailers/123/users/12345/profile.html'
 
 wkhtmltos3:
   bucket:      my-unique-bucket
@@ -77,8 +77,8 @@ NAME
    wkhtmltos3 - Use webkit to convert html page to image on s3
 
 SYNOPSIS
-   wkhtmltos3 [-q queueUrl] [--region] [--maxNumberOfMessages] 
-              [--waitTimeSeconds] [--waitTimeSeconds] [--visibilityTimeout] 
+   wkhtmltos3 [-VP?] [-q queueUrl] [--region] [--maxNumberOfMessages] 
+              [--waitTimeSeconds] [--visibilityTimeout] 
               -b bucket [-k key]
               [--format] [--trim] [--width] [--height]
               [--accessKeyId] [--secretAccessKey]
@@ -183,7 +183,7 @@ The `--wkhtmltoimage` and `--imagemagick` options allow you to pass through opti
 For example, for wkhtmltoimage, you can specify that the image should be zoomed by 200% in order to produce retina resolution images.
 
 ```bash
-$ docker run --rm -e ACCESS_KEY_ID=AKIA000NOTREALKEY000 -e SECRET_ACCESS_KEY=l2r+0000000NotRealSecretAccessKey0000000 danlynn/wkhtmltos3 -V -b my-unique-bucket -k 123/profile12345.jpg -e 1 --wkhtmltoimage='["zoom": 2.0]' 'http://some.com/retailers/123/users/12345/profile.html'
+$ docker run --rm -e ACCESS_KEY_ID=AKIA000NOTREALKEY000 -e SECRET_ACCESS_KEY=l2r+0000000NotRealSecretAccessKey0000000 danlynn/wkhtmltos3 -V -b my-unique-bucket -k 123/profile12345.jpg --wkhtmltoimage='["zoom": 2.0]' 'http://some.com/retailers/123/users/12345/profile.html'
 
 wkhtmltos3:
   bucket:      my-unique-bucket
@@ -210,7 +210,7 @@ Similarly, options can be passed directly through to the imagemagic node module 
 For example, an edge filter can be applied to the image rendered from the html page via:
 
 ```bash
-$ docker run --rm -e ACCESS_KEY_ID=AKIA000NOTREALKEY000 -e SECRET_ACCESS_KEY=l2r+0000000NotRealSecretAccessKey0000000 danlynn/wkhtmltos3 -V -b my-unique-bucket -k 123/14106.jpg -e 1 --trim --imagemagick='["-colorspace","Gray","-edge",1,"-negate"]' 'http://some.com/retailers/123/coupons/14106'
+$ docker run --rm -e ACCESS_KEY_ID=AKIA000NOTREALKEY000 -e SECRET_ACCESS_KEY=l2r+0000000NotRealSecretAccessKey0000000 danlynn/wkhtmltos3 -V -b my-unique-bucket -k 123/14106.jpg --trim --imagemagick='["-colorspace","Gray","-edge",1,"-negate"]' 'http://some.com/retailers/123/coupons/14106'
 
 wkhtmltos3:
   bucket:      my-unique-bucket
@@ -279,7 +279,7 @@ This is a pretty minimal list.  However, wkhtmltopdf does fully support web font
 If you start the docker container passing the optional `--queueUrl=<queueUrl>` and `--region=<region>` options then wkhtmltos3 will run as a service that runs continuously listening for render messages on the AWS SQS (Simple Queue Service).  Note that the AWS SQS must be setup such that it is backed by Redis (not Memcache).
 
 ```bash
-$ node src/wkhtmltos3.js -V --queueUrl https://sqs.us-east-1.amazonaws.com/018867421119/dynamic-email-render --region=us-east-1 -b webstop-dynamic-email -e 1 --trim -P
+$ node src/wkhtmltos3.js -V --queueUrl https://sqs.us-east-1.amazonaws.com/018867421119/dynamic-email-render --region=us-east-1 -b webstop-dynamic-email --trim -P
 ```
 
 Any options that are passed on the command line when launching as a service will act as defaults which will be overridden by options provided in the render messages.
@@ -321,7 +321,7 @@ $ docker run --rm -it -v $(pwd):/myapp --entrypoint=/bin/bash -e ACCESS_KEY_ID= 
 Then from the bash prompt in the container, run the script with your modifications via:
 
 ```bash
-root@684fc69c5877:/myapp$ node wkhtmltos3.js -V -b my-unique-bucket -k 123/profile12345.jpg -e 1 'http://some.com/retailers/123/users/12345/profile.html'
+root@684fc69c5877:/myapp$ node wkhtmltos3.js -V -b my-unique-bucket -k 123/profile12345.jpg 'http://some.com/retailers/123/users/12345/profile.html'
 
 wkhtmltos3:
   bucket:      my-unique-bucket

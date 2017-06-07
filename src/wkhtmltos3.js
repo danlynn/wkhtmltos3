@@ -21,8 +21,8 @@ NAME
    wkhtmltos3 - Use webkit to convert html page to image on s3
 
 SYNOPSIS
-   wkhtmltos3 [-q queueUrl] [--region] [--maxNumberOfMessages] 
-              [--waitTimeSeconds] [--waitTimeSeconds] [--visibilityTimeout] 
+   wkhtmltos3 [-VP?] [-q queueUrl] [--region] [--maxNumberOfMessages] 
+              [--waitTimeSeconds] [--visibilityTimeout] 
               -b bucket [-k key]
               [--format] [--trim] [--width] [--height]
               [--accessKeyId] [--secretAccessKey]
