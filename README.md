@@ -183,7 +183,7 @@ The `--wkhtmltoimage` and `--imagemagick` options allow you to pass through opti
 For example, for wkhtmltoimage, you can specify that the image should be zoomed by 200% in order to produce retina resolution images.
 
 ```bash
-$ docker run --rm -e ACCESS_KEY_ID=AKIA000NOTREALKEY000 -e SECRET_ACCESS_KEY=l2r+0000000NotRealSecretAccessKey0000000 danlynn/wkhtmltos3 -V -b my-unique-bucket -k 123/profile12345.jpg --wkhtmltoimage='["zoom": 2.0]' 'http://some.com/retailers/123/users/12345/profile.html'
+$ docker run --rm -e ACCESS_KEY_ID=AKIA000NOTREALKEY000 -e SECRET_ACCESS_KEY=l2r+0000000NotRealSecretAccessKey0000000 danlynn/wkhtmltos3 -V -b my-unique-bucket -k 123/profile12345.jpg --wkhtmltoimage='["--zoom", 2.0]' 'http://some.com/retailers/123/users/12345/profile.html'
 
 wkhtmltos3:
   bucket:      my-unique-bucket
@@ -191,7 +191,7 @@ wkhtmltos3:
   format:      jpg
   url:         http://some.com/retailers/123/users/12345/profile.html
 
-  wkhtmltoimage generate (["zoom": 2.0])...
+  wkhtmltoimage generate (["--zoom", 2.0])...
   imagemagick convert ([])...
   uploading 32.57k to s3...
   complete
@@ -200,8 +200,6 @@ wkhtmltos3:
 You can see all of the wkhtmltopdf/wkhtmltoimage options on the wkhtmltopdf website.
 
 options reference: [https://wkhtmltopdf.org/usage/wkhtmltopdf.txt](https://wkhtmltopdf.org/usage/wkhtmltopdf.txt)
-
-node module: [https://www.npmjs.com/package/wkhtmltoimage](https://www.npmjs.com/package/wkhtmltoimage)
 
 #### --imagemagic options
 
@@ -218,7 +216,7 @@ wkhtmltos3:
   format:      jpg
   url:         http://some.com/retailers/123/coupons/14106
 
-  wkhtmltoimage generate ({})...
+  wkhtmltoimage generate ([])...
   imagemagick convert (["-trim","-colorspace","Gray","-edge",1,"-negate"])...
   uploading 32.57k to s3...
   complete
