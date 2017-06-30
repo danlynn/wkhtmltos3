@@ -5,7 +5,8 @@ This image will execute [wkhtmltoimage](https://wkhtmltopdf.org) to render an ht
 
 ### Supported tags and respective `Dockerfile` links
 
-+ [`1.6.0`,`latest` (1.6.0/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.6.0/Dockerfile)
++ [`1.7.0`,`latest` (1.7.0/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.7.0/Dockerfile)
++ [`1.6.0` (1.6.0/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.6.0/Dockerfile)
 + [`1.5.0` (1.5.0/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.5.0/Dockerfile)
 + [`1.4.0` (1.4.0/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.4.0/Dockerfile)
 + [`1.3.0` (1.3.0/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.3.0/Dockerfile)
@@ -15,7 +16,7 @@ This image will execute [wkhtmltoimage](https://wkhtmltopdf.org) to render an ht
 
 Note: The current version only supports rendering images.  Stay tuned for a future release that also supports rendering to PDF.
 
-`wkhtmltopdf/wkhtmltoimage 0.12.4 + aws-sdk 2.48.0 + imagemagick 8:6.8.9.9-5+deb8u8 + node 6.10.2`
+`wkhtmltopdf/wkhtmltoimage 0.12.4 + aws-sdk 2.80.0 + imagemagick 6.8.9-9 Q16 + node 6.11.0`
 
 ### How to use
 
@@ -155,6 +156,8 @@ DESCRIPTION
    --url=url
            optionally explicitly identify the url instead of just
            tacking it on the end of the command-line options
+   -v, --version
+           display the current version
    -V, --verbose
            provide verbose logging
    -P, --profile

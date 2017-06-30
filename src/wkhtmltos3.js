@@ -96,6 +96,8 @@ DESCRIPTION
    --url=url
            optionally explicitly identify the url instead of just
            tacking it on the end of the command-line options
+   -v, --version
+           display the current version
    -V, --verbose
            provide verbose logging
    -P, --profile
@@ -121,6 +123,7 @@ const optionDefinitions = [
   {name: 'height',                   type: Number},
   {name: 'accessKeyId',              type: String},
   {name: 'secretAccessKey',          type: String},
+  {name: 'version',      alias: 'v', type: Boolean},
   {name: 'verbose',      alias: 'V', type: Boolean},
   {name: 'profile',      alias: 'P', type: Boolean},
   {name: 'help',         alias: '?', type: Boolean},
@@ -554,6 +557,12 @@ const options = getOptions(null, () => {process.exit(1)})
 
 if (options.help || process.argv.length === 2) {
   displayHelp()
+  process.exit()
+}
+
+if (options.version) {
+  let packageJson = JSON.parse(fs.readFileSync('package.json', "utf8"))
+  console.log(`${packageJson.name} ${packageJson.version}`)
   process.exit()
 }
 
