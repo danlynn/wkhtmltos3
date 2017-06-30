@@ -2,14 +2,14 @@
 
 
 const childProcess = require('child_process')
-const imagemagick = require('imagemagick')
-const commandLineArgs = require('command-line-args')
-const AWS = require('aws-sdk')
+const imagemagick = require('imagemagick')            // https://github.com/yourdeveloper/node-imagemagick
+const commandLineArgs = require('command-line-args')  // https://github.com/75lb/command-line-args
+const AWS = require('aws-sdk')                        // https://github.com/aws/aws-sdk-js
 const moment = require('moment')
-const fs = require('fs-extra')
+const fs = require('fs-extra')                        // https://github.com/jprichardson/node-fs-extra
 const path = require('path')
 const clone = require('clone')
-const ProfileLog = require('profilelog').default
+const ProfileLog = require('profilelog').default      // https://github.com/danlynn/profilelog
 
 
 const profileLog = new ProfileLog()
@@ -415,28 +415,36 @@ wkhtmltos3:
       }
       else {
         profileLog.addEntry(start, 'complete wkhtmltoimage')
-        // Display output from wkhtmltoimage filtering out normal progress and info
-        // so that only warnings and errors remain.  Note these will always be
-        // displayed regardless of verbose option.
-        const stdoutFiltered = stdout.replace(/\s\s|\r|\[[=> ]+] \d+%/g, '').replace(/^\n|\n$/mg, '').replace(/\n/g, '\n    - ')
-        if (stdoutFiltered.length > 0)
-          console.log(`    - ${stdoutFiltered}`)
-        const stderrFiltered = stderr.replace(/\s\s|\r|\[[=> ]+] \d+%|Loading page \(\d\/\d\)|Rendering \(\d\/\d\)|Done/g, '').replace(/^\n|\n$/mg, '').replace(/\n/g, '\n    - ')
-        if (stderrFiltered.length > 0)
-          console.log(`    - ${stderrFiltered}`)
-        // invoke imagemagick if needed
-        if (options.trim)
-          options.imagemagick = ['-trim'].concat(options.imagemagick)
-        if (options.imagemagick.length > 0) {
-          imagemagickConvert(imagepath, options,
-            function(imagepath, options) {
-              uploadToS3(imagepath, options, success, fail)
-            },
-            fail
+        if (!fs.existsSync(imagepath)) {
+          logger(options, 'error',
+            `  failed: wkhtmltoimage was successful - but no image file exists!\n    stdout:\n${stdout}\n    stderr:\n${stderr}`,
+            `wkhtmltos3: fail render: ${options.url} => s3:${options.bucket}:${options.key} (wkhtmltoimage was successful - but no image file exists!)`
           )
         }
         else {
-          uploadToS3(imagepath, options, success, fail)
+          // Display output from wkhtmltoimage filtering out normal progress and info
+          // so that only warnings and errors remain.  Note these will always be
+          // displayed regardless of verbose option.
+          const stdoutFiltered = stdout.replace(/\s\s|\r|\[[=> ]+] \d+%/g, '').replace(/^\n|\n$/mg, '').replace(/\n/g, '\n    - ')
+          if (stdoutFiltered.length > 0)
+            console.log(`    - ${stdoutFiltered}`)
+          const stderrFiltered = stderr.replace(/\s\s|\r|\[[=> ]+] \d+%|Loading page \(\d\/\d\)|Rendering \(\d\/\d\)|Done/g, '').replace(/^\n|\n$/mg, '').replace(/\n/g, '\n    - ')
+          if (stderrFiltered.length > 0)
+            console.log(`    - ${stderrFiltered}`)
+          // invoke imagemagick if needed
+          if (options.trim)
+            options.imagemagick = ['-trim'].concat(options.imagemagick)
+          if (options.imagemagick.length > 0) {
+            imagemagickConvert(imagepath, options,
+              function(imagepath, options) {
+                uploadToS3(imagepath, options, success, fail)
+              },
+              fail
+            )
+          }
+          else {
+            uploadToS3(imagepath, options, success, fail)
+          }
         }
       }
     })
@@ -513,11 +521,11 @@ function listenOnSqsQueue(options) {
             renderPage(
               mergeOptions(options, JSON.parse(message.Body)),
               function() {
-                logger(options, 'log', `receiveMessage: delete...`)
                 const deleteParams = {
                   QueueUrl: queueUrl,
                   ReceiptHandle: data.Messages[0].ReceiptHandle
                 }
+                logger(options, 'log', `receiveMessage: delete...\ndeleteParams: \n${JSON.stringify(deleteParams, null, 2)}`)
                 sqs.deleteMessage(deleteParams, function(error, data) {
                   if (error) {
                     console.error(`receiveMessage: delete: fail: ${error}`)
