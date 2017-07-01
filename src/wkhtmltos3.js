@@ -423,6 +423,7 @@ wkhtmltos3:
             `  failed: wkhtmltoimage was successful - but no image file exists!\n    stdout:\n${stdout}\n    stderr:\n${stderr}`,
             `wkhtmltos3: fail render: ${options.url} => s3:${options.bucket}:${options.key} (wkhtmltoimage was successful - but no image file exists!)`
           )
+          fail()
         }
         else {
           // Display output from wkhtmltoimage filtering out normal progress and info

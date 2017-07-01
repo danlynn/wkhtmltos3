@@ -1,6 +1,6 @@
 {
   "name": "wkhtmltos3",
-  "version": "1.7.0",
+  "version": "1.7.1",
   "description": "Retrieve webpage and render to jpg image on s3.",
   "main": "src/wkhtmltos3.js",
   "scripts": {
