@@ -537,10 +537,10 @@ function listenOnSqsQueue(options) {
                     logger(options, 'log', `receiveMessage: delete: success: ${JSON.stringify(data)}`)
                   }
                 })
-                profileLog.writeToConsole()
+                profileLog.writeToConsole(true)
               },
               function() {
-                profileLog.writeToConsole()
+                profileLog.writeToConsole(true)
               }
             )
           }
