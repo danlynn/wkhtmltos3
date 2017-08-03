@@ -1,4 +1,6 @@
 // TODO: support pdf in addition to image (see: https://www.npmjs.com/package/wkhtmltox)
+// TODO: add option to support a "check-render" where it renders again and compares it to the first before continuing
+// TODO: look for wkhtmltoimage options for waiting until JS complete before continuing
 
 
 const childProcess = require('child_process')
@@ -9,6 +11,7 @@ const moment = require('moment')
 const fs = require('fs-extra')                        // https://github.com/jprichardson/node-fs-extra
 const path = require('path')
 const clone = require('clone')
+const md5File = require('md5-file')                   // https://github.com/roryrjb/md5-file
 const ProfileLog = require('profilelog').default      // https://github.com/danlynn/profilelog
 
 
@@ -66,6 +69,12 @@ DESCRIPTION
            to 1024 wide and the height usually has some padding 
            too
            see: http://www.imagemagick.org/Usage/crop/#trim
+   --redundant
+           render html page into image twice in parallel. If both 
+           image files are NOT identical then repeatedly render again 
+           until a newly rendered image matched any of the previously
+           rendered images.  Gives up after 3 additional render 
+           attempts.
    --width=pixels
            explicitly set the width for wkhtmltoimage rendering
    --height=pixels
@@ -119,6 +128,7 @@ const optionDefinitions = [
   {name: 'key',          alias: 'k', type: String},
   {name: 'format',                   type: String},
   {name: 'trim',         alias: 't', type: Boolean},
+  {name: 'redundant',                type: Boolean},// keep rendering until 2 match
   {name: 'width',                    type: Number},
   {name: 'height',                   type: Number},
   {name: 'accessKeyId',              type: String},
@@ -309,11 +319,6 @@ function uploadToS3(imagepath, options, success, fail) {
       fail()
     }
     else {
-      const elapsed = new Date() - options.start
-      logger(options, 'log',
-        `  complete (${elapsed} ms)\n`,
-        `wkhtmltos3: success (${elapsed} ms): ${options.url} => s3:${options.bucket}:${options.key}`
-      )
       fs.remove(imagepath, error => {
         if (error)
           console.log(`    warning: failed to delete image: ${error}`)
@@ -366,6 +371,128 @@ function imagemagickConvert(imagepath, options, success, fail) {
 
 
 /**
+ * Generate an image at 'imagepath' of the html page specified by 'options.url'
+ * and configured via the other attributes in 'options'.
+ *
+ * @param options {Object} only used to pass onto log() for options.verbose value
+ * @param imagepath {string} output path of created image
+ * @param success {function} invoked upon success
+ * @param fail {function} invoked upon fail
+ */
+function wkhtmltoimage(options, imagepath, success, fail) {
+  let cacheDir = '/tmp/wkhtmltoimage_cache'
+  fs.mkdirsSync(path.dirname(cacheDir))
+  fs.mkdirsSync(path.dirname(imagepath))
+
+  let generateOptions = []
+  if (options.width)
+    generateOptions.push('--width', String(options.width))
+  if (options.height)
+    generateOptions.push('--height', String(options.height))
+  if (options.format)
+    generateOptions.push('--format', options.format)
+  if (options.wkhtmltoimage)
+    generateOptions = generateOptions.concat(options.wkhtmltoimage)
+  generateOptions = generateOptions.concat(['--cache-dir', cacheDir, options.url, imagepath])
+  logger(options, 'log', `  wkhtmltoimage (${JSON.stringify(generateOptions)})...`)
+
+  // Note that --javascript-delay normally defaults to 200 ms.  It may be extended
+  // to avoid warnings about an iframe taking to long to load - might not help.
+  const child = childProcess.execFile('wkhtmltoimage', generateOptions, (error, stdout, stderr) => {
+    if (error) {
+      logger(options, 'error',
+        `  failed: ${error}\n`,
+        `wkhtmltos3: fail render: ${options.url} => s3:${options.bucket}:${options.key} (${error})`
+      )
+      profileLog.addEntry(options.start, 'fail wkhtmltoimage')
+      fail()
+    }
+    else {
+      profileLog.addEntry(options.start, 'complete wkhtmltoimage')
+      if (!fs.existsSync(imagepath)) {
+        logger(options, 'error',
+          `  failed: wkhtmltoimage was successful - but no image file exists!\n    stdout:\n${stdout}\n    stderr:\n${stderr}`,
+          `wkhtmltos3: fail render: ${options.url} => s3:${options.bucket}:${options.key} (wkhtmltoimage was successful - but no image file exists!)`
+        )
+        fail()
+      }
+      else {
+        // Display output from wkhtmltoimage filtering out normal progress and info
+        // so that only warnings and errors remain.  Note these will always be
+        // displayed regardless of verbose option.
+        const stdoutFiltered = stdout.replace(/\s\s|\r|\[[=> ]+] \d+%/g, '').replace(/^\n|\n$/mg, '').replace(/\n/g, '\n    - ')
+        if (stdoutFiltered.length > 0)
+          console.log(`    - ${stdoutFiltered}`)
+        const stderrFiltered = stderr.replace(/\s\s|\r|\[[=> ]+] \d+%|Loading page \(\d\/\d\)|Rendering \(\d\/\d\)|Done/g, '').replace(/^\n|\n$/mg, '').replace(/\n/g, '\n    - ')
+        if (stderrFiltered.length > 0)
+          console.log(`    - ${stderrFiltered}`)
+        success()
+      }
+    }
+  })
+}
+
+
+/**
+ * Redundantly invoke wkhtmltoimage() until 2 resulting images match.  This
+ * compensates for 'wkhtmltoimage' binary occasionally failing to load all
+ * static assets.  Works by invoking 2 renders in parallel then verifying that
+ * they match.  If they don't match then keep invoking additional renders until
+ * the latest render matches any of the preceding images.  Gives up after 3
+ * additional renders.
+ *
+ * @param options {Object} only used to pass onto log() for options.verbose value
+ * @param imagepath {string} output path of created image
+ * @param success {function} invoked upon success
+ * @param fail {function} invoked upon fail
+ */
+function wkhtmltoimageRedundant(options, imagepath, success, fail) {
+  const imagepaths = []
+  const imageHashes = new Set()
+
+  function indexedPath(path, index) {
+    const match = path.match(/(.*)(\.\w+)/)
+    return match[1] + '-' + index + match[2]
+  }
+
+  function renderUntilMatchFound() {
+    let tempImagePath = indexedPath(imagepath, imagepaths.length + 1)
+    imagepaths.push(tempImagePath)
+
+    wkhtmltoimage(options, tempImagePath, () => {
+      let hash = md5File.sync(tempImagePath)
+      // console.log(`=== md5: ${hash}`)
+      options.renderAttempts = imagepaths.length
+      if (imageHashes.has(hash) || options.renderAttempts >= 5) {
+        let message = 'first 2 renders matched'
+        if (options.renderAttempts > 2)
+          message = `extra attempts: ${options.renderAttempts - 2}`
+        if (options.renderAttempts >= 5)
+          message = `gave up after ${options.renderAttempts - 2} extra attempts`
+        logger(options, 'log', `  redundancy: success (${message})`)
+        fs.moveSync(tempImagePath, imagepath, { overwrite: true })
+        // TODO: delete all attempts left
+        success()
+      }
+      else {
+        imageHashes.add(hash)
+        // Keep trying except for first parallel render. This avoids doing
+        // 3 renders when first 2 match.
+        if (imageHashes.length >= 2)
+          renderUntilMatchFound()
+      }
+    }, fail)
+
+    if (imagepaths.length < 2) { // initialize by rendering twice
+      renderUntilMatchFound()
+    }
+  }
+
+  renderUntilMatchFound()
+}
+
+
+/**
  * Render the html page specified by 'url' option to jpg image which
  * is then optionally trimmed then uploaded to Amazon s3.
  *
@@ -381,7 +508,7 @@ function renderPage(options, success, fail) {
     profileLog.enabled = !!options.profile
 
     const start = new Date()
-    options.start = start
+    options.start = start // used by 'profileLog' in wkhtmltoimage() and uploadToS3()
     if (options.verbose)
       console.log(`
 wkhtmltos3:
@@ -390,70 +517,35 @@ wkhtmltos3:
   format:      ${options.format || 'jpg'}
   url:         ${options.url}
 `)
-    let cacheDir = '/tmp/wkhtmltoimage_cache'
-    fs.mkdirsSync(path.dirname(cacheDir))
     let imagepath = `/tmp/${options.key}`
-    fs.mkdirsSync(path.dirname(imagepath))
-    let generateOptions = []
-    if (options.width)
-      generateOptions.push('--width', String(options.width))
-    if (options.height)
-      generateOptions.push('--height', String(options.height))
-    if (options.format)
-      generateOptions.push('--format', options.format)
-    if (options.wkhtmltoimage)
-      generateOptions = generateOptions.concat(options.wkhtmltoimage)
-    logger(options, 'log', `  wkhtmltoimage (${JSON.stringify(generateOptions)})...`)
-    generateOptions = generateOptions.concat(['--cache-dir', cacheDir, options.url, imagepath])
+    const renderFunc = options.redundant ? wkhtmltoimageRedundant : wkhtmltoimage
+    renderFunc(options, imagepath, () => {
 
-    // Note that --javascript-delay normally defaults to 200 ms.  It may be extended
-    // to avoid warnings about an iframe taking to long to load - might not help.
-    const child = childProcess.execFile('wkhtmltoimage', generateOptions, (error, stdout, stderr) => {
-      if (error) {
-        logger(options, 'error',
-          `  failed: ${error}\n`,
-          `wkhtmltos3: fail render: ${options.url} => s3:${options.bucket}:${options.key} (${error})`
-        )
-        profileLog.addEntry(start, 'fail wkhtmltoimage')
+      // if called as success from imagemagickConvert then it passes the imagepath
+      // of the converted image rather than the original non-converted path
+      function renderSuccess(imagepath, options) {
+        uploadToS3(imagepath, options, () => {
+          const elapsed = new Date() - options.start
+          logger(options, 'log',
+            `  complete (${elapsed} ms)\n`,
+            `wkhtmltos3: success (${elapsed} ms): ${options.url} => s3:${options.bucket}:${options.key}`
+          )
+          success()
+        }, fail)
+      }
+
+      // invoke imagemagick if needed
+      if (options.trim)
+        options.imagemagick = ['-trim'].concat(options.imagemagick)
+      if (options.imagemagick.length > 0) {
+        imagemagickConvert(imagepath, options, renderSuccess, fail)
       }
       else {
-        profileLog.addEntry(start, 'complete wkhtmltoimage')
-        if (!fs.existsSync(imagepath)) {
-          logger(options, 'error',
-            `  failed: wkhtmltoimage was successful - but no image file exists!\n    stdout:\n${stdout}\n    stderr:\n${stderr}`,
-            `wkhtmltos3: fail render: ${options.url} => s3:${options.bucket}:${options.key} (wkhtmltoimage was successful - but no image file exists!)`
-          )
-          fail()
-        }
-        else {
-          // Display output from wkhtmltoimage filtering out normal progress and info
-          // so that only warnings and errors remain.  Note these will always be
-          // displayed regardless of verbose option.
-          const stdoutFiltered = stdout.replace(/\s\s|\r|\[[=> ]+] \d+%/g, '').replace(/^\n|\n$/mg, '').replace(/\n/g, '\n    - ')
-          if (stdoutFiltered.length > 0)
-            console.log(`    - ${stdoutFiltered}`)
-          const stderrFiltered = stderr.replace(/\s\s|\r|\[[=> ]+] \d+%|Loading page \(\d\/\d\)|Rendering \(\d\/\d\)|Done/g, '').replace(/^\n|\n$/mg, '').replace(/\n/g, '\n    - ')
-          if (stderrFiltered.length > 0)
-            console.log(`    - ${stderrFiltered}`)
-          // invoke imagemagick if needed
-          if (options.trim)
-            options.imagemagick = ['-trim'].concat(options.imagemagick)
-          if (options.imagemagick.length > 0) {
-            imagemagickConvert(imagepath, options,
-              function(imagepath, options) {
-                uploadToS3(imagepath, options, success, fail)
-              },
-              fail
-            )
-          }
-          else {
-            uploadToS3(imagepath, options, success, fail)
-          }
-        }
+        renderSuccess(imagepath, options)
       }
-    })
+    }, fail)
   }
-  else {
+  else { // invalid options
     fail()
   }
 }
