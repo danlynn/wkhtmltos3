@@ -319,7 +319,7 @@ $ docker build -t danlynn/wkhtmltos3:1.1.0 .
 Launch the image and make interactive changes to the wkhtmltos3.js by mounting the current project directory in the container and opening a bash prompt via:
 
 ```bash
-$ docker run --rm -it -v $(pwd):/myapp --entrypoint=/bin/bash -e ACCESS_KEY_ID= AKIA000NOTREALKEY000 -e SECRET_ACCESS_KEY= l2r+0000000NotRealSecretAccessKey0000000 danlynn/wkhtmltos3:1.1.0
+$ docker run --rm -it -v $(pwd):/myapp --entrypoint=/bin/bash -e ACCESS_KEY_ID=AKIA000NOTREALKEY000 -e SECRET_ACCESS_KEY=l2r+0000000NotRealSecretAccessKey0000000 danlynn/wkhtmltos3:1.1.0
 ```
 
 Then from the bash prompt in the container, run the script with your modifications via:
