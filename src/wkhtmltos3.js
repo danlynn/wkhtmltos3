@@ -1,18 +1,17 @@
 // TODO: support pdf in addition to image (see: https://www.npmjs.com/package/wkhtmltox)
-// TODO: add option to support a "check-render" where it renders again and compares it to the first before continuing
-// TODO: look for wkhtmltoimage options for waiting until JS complete before continuing
+// TODO: switch profileLog to create and use a new instance with each renderPage() call
 
 
 const childProcess = require('child_process')
 const imagemagick = require('imagemagick')            // https://github.com/yourdeveloper/node-imagemagick
 const commandLineArgs = require('command-line-args')  // https://github.com/75lb/command-line-args
 const AWS = require('aws-sdk')                        // https://github.com/aws/aws-sdk-js
-const moment = require('moment')
 const fs = require('fs-extra')                        // https://github.com/jprichardson/node-fs-extra
 const path = require('path')
-const clone = require('clone')
+const clone = require('clone')                        // https://github.com/pvorb/clone
 const md5File = require('md5-file')                   // https://github.com/roryrjb/md5-file
 const ProfileLog = require('profilelog').default      // https://github.com/danlynn/profilelog
+const awsConfig = require('awsconfig-extra').default  // https://github.com/danlynn/awsconfig-extra
 
 
 const profileLog = new ProfileLog()
@@ -24,13 +23,15 @@ NAME
    wkhtmltos3 - Use webkit to convert html page to image on s3
 
 SYNOPSIS
-   wkhtmltos3 [-VP?] [-q queueUrl] [--region] [--maxNumberOfMessages] 
+   wkhtmltos3 [-q queueUrl] [--region] [--maxNumberOfMessages] 
               [--waitTimeSeconds] [--visibilityTimeout] 
-              -b bucket [-k key]
+              [-b bucket] [-k key]
               [--format] [--trim] [--width] [--height]
               [--accessKeyId] [--secretAccessKey]
-              [-V verbose] [--wkhtmltoimage]
-              [--imagemagick] [--url] [url]
+              [--wkhtmltoimage] [--redundant]
+              [--imagemagick] [--url]
+              [-? --help] [-V --verbose] [-P --profile]
+              [url]
 
 DESCRIPTION
    Convert html page specified by 'url' into a jpg image and
@@ -40,6 +41,31 @@ DESCRIPTION
    an html page to an image on s3 -OR- can be launched as a service
    that listens for messages to be posted to an aws SQS queue. If
    '--queueUrl' is specified then it will launch as a service.
+   
+   If ran as a service, the render params will be read from messages
+   posted on the SQS queue.  The message format shold be as follows:
+   
+   {
+     "url": "http://website.com/retailers/767/coupons/28967/dynamic",
+     "key": "imagecache/test/queue1.jpg",
+     "trim": true,
+     "imagemagick": [
+       "-colorspace",
+       "Gray",
+       "-edge",
+       1,
+       "-negate"
+     ],
+     "wkhtmltoimage": [
+       "--zoom",
+       2.0
+     ]
+   }
+
+   As always, it is a good idea to setup a deadletter queue for messages
+   which fail processing more than a few times.  This will prevent this
+   app from infinitely retrying until a message expires out of the render
+   queue.
 
    -q, --queueUrl=queueUrl
            url of an aws SQS queue to listen for messages
@@ -231,30 +257,6 @@ function getOptions(argv = null, fail = null) {
 
 
 /**
- * Get aws config for accessKeyId, secretAccessKey, region.
- *
- * @returns {{}} object with aws config attributes
- */
-function awsConfig() {
-  // TODO: check into using: AWS.config.loadFromPath('./config.json')
-  // TODO: see: http://docs.aws.amazon.com/sdk-for-javascript/v2/developer-guide/loading-node-credentials-json-file.html
-  const accessKeyId = options.accessKeyId || process.env.ACCESS_KEY_ID
-  const secretAccessKey = options.secretAccessKey || process.env.SECRET_ACCESS_KEY
-  const region = options.region || process.env.REGION
-  let awsAuth = {} // not needed if running within aws environment already
-  if (accessKeyId && secretAccessKey) {
-    awsAuth = {
-      accessKeyId: accessKeyId,
-      secretAccessKey: secretAccessKey
-    }
-  }
-  if (region)
-    Object.assign(awsAuth, {region: region})
-  return awsAuth
-}
-
-
-/**
  * Log to either console.log or console.error depending on 'level'
  * either the 'verbose_msg' or 'short_msg' based upon options.verbose.
  * If options.verbose then the 'verbose_msg' will be logged if provided.
@@ -264,11 +266,11 @@ function awsConfig() {
  *
  * @param options {{}} command line options object
  * @param level {string} either 'log' or 'error'
- * @param verbose_msg {string} optional
+ * @param verbose_msg {string} optional - null to use short_msg
  * @param short_msg {string} optional
  */
 function logger(options, level, verbose_msg, short_msg = null) {
-  const msg = options.verbose ? verbose_msg : short_msg
+  const msg = options.verbose ? verbose_msg || short_msg : short_msg
   if (msg) {
     if (level === 'error')
       console.error(msg)
@@ -284,16 +286,16 @@ function logger(options, level, verbose_msg, short_msg = null) {
  * @see https://www.npmjs.com/package/s3
  *
  * @param imagepath {string} path of file to be uploaded to s3
- * @param options {Object} {bucket, key, accessKeyId, secretAccessKey, verbose, url}
+ * @param options {{bucket: string, key: string, accessKeyId: string, secretAccessKey:string, verbose:boolean, url:string}}
  * @param success {function} invoked upon success
  * @param fail {function} invoked upon fail
  */
 function uploadToS3(imagepath, options, success, fail) {
   const start = new Date()
   if (options.verbose)
-    console.log(`  uploading ${fs.statSync(imagepath).size/1000.0}k to s3...`)
+    logger(options, 'log', `  uploading ${fs.statSync(imagepath).size/1000.0}k to s3...`)
 
-  const S3 = new AWS.S3(awsConfig());
+  const S3 = new AWS.S3(awsConfig(options));
 
   let contentType = 'image/*'
   if (!options.format)
@@ -312,8 +314,8 @@ function uploadToS3(imagepath, options, success, fail) {
   }, (error) => {
     if (error) {
       logger(options, 'error',
-        `  failed: error = ${error}\n`,
-        `wkhtmltos3: fail upload: ${options.url} => s3:${options.bucket}:${options.key} (error = ${error})`
+        `  failed: error = ${error.stack || error}\n`,
+        `wkhtmltos3: fail upload: ${options.url} => s3:${options.bucket}:${options.key} (error = ${error.message || error})`
       )
       profileLog.addEntry(start, 'fail s3 upload')
       fail()
@@ -321,7 +323,7 @@ function uploadToS3(imagepath, options, success, fail) {
     else {
       fs.remove(imagepath, error => {
         if (error)
-          console.log(`    warning: failed to delete image: ${error}`)
+          logger(options, 'error', null, `    warning: failed to delete image: ${error.stack || error}`)
       })
       profileLog.addEntry(start, 'complete s3 upload')
       profileLog.addEntry(options.start, 'total')
@@ -352,8 +354,8 @@ function imagemagickConvert(imagepath, options, success, fail) {
   imagemagick.convert([imagepath].concat(options.imagemagick, destpath), function (error, stdout) {
     if (error) {
       logger(options, 'error',
-        `  failed: error = ${error.message}\n`,
-        `wkhtmltos3: fail imagemagick convert: ${options.url} => s3:${options.bucket}:${options.key} (error = ${error.message}, stdout = ${stdout})`
+        `  failed: error = ${error.message || error}\n`,
+        `wkhtmltos3: fail imagemagick convert: ${options.url} => s3:${options.bucket}:${options.key} (error = ${error.message || error}, stdout = ${stdout})`
       )
       profileLog.addEntry(start, 'fail imagemagick convert')
       fail()
@@ -362,7 +364,7 @@ function imagemagickConvert(imagepath, options, success, fail) {
       profileLog.addEntry(start, 'complete imagemagick convert')
       fs.remove(imagepath, error => {
         if (error)
-          console.log(`    warning: failed to delete original image: ${error}`)
+          console.log(`    warning: failed to delete original image: ${error.stack || error}`)
       })
       success(destpath, options)
     }
@@ -393,8 +395,9 @@ function wkhtmltoimage(options, imagepath, success, fail) {
     generateOptions.push('--format', options.format)
   if (options.wkhtmltoimage)
     generateOptions = generateOptions.concat(options.wkhtmltoimage)
-  generateOptions = generateOptions.concat(['--cache-dir', cacheDir, options.url, imagepath])
+  // log generateOptions before last 3 redundant options are added
   logger(options, 'log', `  wkhtmltoimage (${JSON.stringify(generateOptions)})...`)
+  generateOptions = generateOptions.concat(['--cache-dir', cacheDir, options.url, imagepath])
 
   // Note that --javascript-delay normally defaults to 200 ms.  It may be extended
   // to avoid warnings about an iframe taking to long to load - might not help.
@@ -402,7 +405,7 @@ function wkhtmltoimage(options, imagepath, success, fail) {
     if (error) {
       logger(options, 'error',
         `  failed: ${error}\n`,
-        `wkhtmltos3: fail render: ${options.url} => s3:${options.bucket}:${options.key} (${error})`
+        `wkhtmltos3: fail render: ${options.url} => s3:${options.bucket}:${options.key} (${error.stack || error})`
       )
       profileLog.addEntry(options.start, 'fail wkhtmltoimage')
       fail()
@@ -516,6 +519,7 @@ wkhtmltos3:
   key:         ${options.key}
   format:      ${options.format || 'jpg'}
   url:         ${options.url}
+  redundant:   ${options.redundant ? 'true' : 'false'}
 `)
     let imagepath = `/tmp/${options.key}`
     const renderFunc = options.redundant ? wkhtmltoimageRedundant : wkhtmltoimage
@@ -568,6 +572,44 @@ function mergeOptions(options, overrides) {
 }
 
 
+/**
+ * Run forever as an SQS queue listener service.
+ *
+ * @param options {{
+ *   queueUrl: string,
+ *   region: string,
+ *   [maxNumberOfMessages]: number,
+ *   [waitTimeSeconds]: number,
+ *   [visibilityTimeout]: number,
+ * }}
+ *
+ * queue message example:
+ *
+ *   {
+ *     "url": "http://website.com/retailers/767/coupons/28967/dynamic",
+ *     "key": "imagecache/test/queue1.jpg",
+ *     "trim": true,
+ *     "imagemagick": [
+ *       "-colorspace",
+ *       "Gray",
+ *       "-edge",
+ *       1,
+ *       "-negate"
+ *     ],
+ *     "wkhtmltoimage": [
+ *       "--zoom",
+ *       2.0
+ *     ]
+ *   }
+ *
+ * Suggested AWS SQS Queue config params:
+ *
+ *   Default Visibility Timeout: 15 secs
+ *   Message Retention Period: 30 mins (avoid duplicate accumulation)
+ *   Receive Message Wait Time: 20 secs
+ *   Queue Type: standard
+ *   Redrive Policy > Max Receives: 10
+ */
 function listenOnSqsQueue(options) {
   console.log('listenOnSqsQueue: started')
 
@@ -580,14 +622,14 @@ function listenOnSqsQueue(options) {
   console.log(`  region:              ${options.region}`)
   console.log(`  maxNumberOfMessages: ${maxNumberOfMessages}`)
   console.log(`  waitTimeSeconds:     ${waitTimeSeconds}`)
-  console.log(`  visibilityTimeout:   ${visibilityTimeout}`)
+  console.log(`  visibilityTimeout:   ${visibilityTimeout}\n`)
 
   if (!options.region) {
     console.error('ERROR: --region is required when --queueUrl is specified')
     process.exit(1)
   }
 
-  const sqs = new AWS.SQS(awsConfig())
+  const sqs = new AWS.SQS(awsConfig(options))
 
   params = {
     AttributeNames: [
@@ -601,40 +643,54 @@ function listenOnSqsQueue(options) {
     WaitTimeSeconds: waitTimeSeconds
   }
 
+  let delay = 0 // millisecs between queue requests
   function receiveMessage() {
     sqs.receiveMessage(params, function(error, data) {
-      setImmediate(receiveMessage) // loop as soon as message received/timeout/error
+      if (delay > 0)
+        setTimeout(receiveMessage, delay)
+      else
+        setImmediate(receiveMessage) // loop as soon as message received/timeout/error
       if (error) {
-        console.log(`receiveMessage: fail: ${error}`)
+        delay = 20000 // millisecs to wait before trying again
+        console.log(`receiveMessage: fail (delay: ${delay} ms): ${error.stack || error}`)
       }
       else {
+        delay = 0 // millisecs
         if (!data.Messages) {
           // logger(options, 'log', `receiveMessage: none (data: ${JSON.stringify(data)})`)
         }
         else {
-          logger(options, 'log', `receiveMessage: success: messages: \n${JSON.stringify(data.Messages.map(function(m) {return JSON.parse(m.Body)}), null, 2)}`)
-          for (let message of data.Messages) {
-            renderPage(
-              mergeOptions(options, JSON.parse(message.Body)),
-              function() {
-                const deleteParams = {
-                  QueueUrl: queueUrl,
-                  ReceiptHandle: data.Messages[0].ReceiptHandle
-                }
-                logger(options, 'log', `receiveMessage: delete...\ndeleteParams: \n${JSON.stringify(deleteParams, null, 2)}`)
-                sqs.deleteMessage(deleteParams, function(error, data) {
-                  if (error) {
-                    console.error(`receiveMessage: delete: fail: ${error}`)
-                  } else {
-                    logger(options, 'log', `receiveMessage: delete: success: ${JSON.stringify(data)}`)
+          try {
+            logger(options, 'log', `receiveMessage: successfully received messages: \n${JSON.stringify(data.Messages.map(function (m) {
+              return JSON.parse(m.Body)
+            }), null, 2)}`)
+            for (let message of data.Messages) {
+              renderPage(
+                mergeOptions(options, JSON.parse(message.Body)),
+                function () {
+                  const deleteParams = {
+                    QueueUrl: queueUrl,
+                    ReceiptHandle: data.Messages[0].ReceiptHandle
                   }
-                })
-                profileLog.writeToConsole(true)
-              },
-              function() {
-                profileLog.writeToConsole(true)
-              }
-            )
+                  logger(options, 'log', `receiveMessage: delete...`)
+                  sqs.deleteMessage(deleteParams, function (error, data) {
+                    if (error) {
+                      console.error(`receiveMessage: delete: fail: ${error.stack || error}`)
+                    } else {
+                      logger(options, 'log', `receiveMessage: delete: success: ${JSON.stringify(data)}`)
+                    }
+                  })
+                  profileLog.writeToConsole(true)
+                },
+                function () {
+                  logger(options, 'error', null, `receiveMessage: fail processing message:\n${JSON.stringify(message.Body)}`)
+                  profileLog.writeToConsole(true)
+                }
+              )
+            }
+          }
+          catch (error) {
+            logger(options, 'error', null, `receiveMessage: fail parsing messages:\n${JSON.stringify(data)}\n${error.stack || error}`)
           }
         }
       }
@@ -646,32 +702,42 @@ function listenOnSqsQueue(options) {
 
 
 // ===== main =======================================================
-const options = getOptions(null, () => {process.exit(1)})
+/**
+ * Reads commandLineArgs options then determine how to proceed:
+ * run as an SQS queue service, run one-off as a cli-tool, display
+ * help or version.
+ */
+function main() {
+  const options = getOptions(null, () => {process.exit(1)})
 
-if (options.help || process.argv.length === 2) {
-  displayHelp()
-  process.exit()
+  if (options.help || process.argv.length === 2) {
+    displayHelp()
+    process.exit()
+  }
+
+  if (options.version) {
+    let packageJson = JSON.parse(fs.readFileSync('package.json', "utf8"))
+    console.log(`${packageJson.name} ${packageJson.version}`)
+    process.exit()
+  }
+
+  if (options.queueUrl) {
+    listenOnSqsQueue(options) // run forever
+  }
+  else {
+    renderPage( // render one page then exit
+      options,
+      function() {
+        profileLog.writeToConsole()
+        process.exit()
+      },
+      function() {
+        profileLog.writeToConsole()
+        process.exit(1)
+      }
+    )
+  }
 }
 
-if (options.version) {
-  let packageJson = JSON.parse(fs.readFileSync('package.json', "utf8"))
-  console.log(`${packageJson.name} ${packageJson.version}`)
-  process.exit()
-}
 
-if (options.queueUrl) {
-  listenOnSqsQueue(options) // run forever
-}
-else {
-  renderPage( // render one page then exit
-    options,
-    function() {
-      profileLog.writeToConsole()
-      process.exit()
-    },
-    function() {
-      profileLog.writeToConsole()
-      process.exit(1)
-    }
-  )
-}
+main()
