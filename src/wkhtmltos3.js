@@ -43,7 +43,7 @@ DESCRIPTION
    '--queueUrl' is specified then it will launch as a service.
    
    If ran as a service, the render params will be read from messages
-   posted on the SQS queue.  The message format shold be as follows:
+   posted on the SQS queue.  The message format should be as follows:
    
    {
      "url": "http://website.com/retailers/767/coupons/28967/dynamic",
@@ -100,7 +100,8 @@ DESCRIPTION
            image files are NOT identical then repeatedly render again 
            until a newly rendered image matched any of the previously
            rendered images.  Gives up after 3 additional render 
-           attempts.
+           attempts.  This mitigates render errors caused by failures
+           in static resource loading.
    --width=pixels
            explicitly set the width for wkhtmltoimage rendering
    --height=pixels
