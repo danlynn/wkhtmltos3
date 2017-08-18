@@ -5,7 +5,8 @@ This image will execute [wkhtmltoimage](https://wkhtmltopdf.org) to render an ht
 
 ### Supported tags and respective `Dockerfile` links
 
-+ [`1.7.1`,`latest` (1.7.1/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.7.1/Dockerfile)
++ [`1.8.0`,`latest` (1.8.0/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.8.0/Dockerfile)
++ [`1.7.1` (1.7.1/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.7.1/Dockerfile)
 + [`1.6.0` (1.6.0/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.6.0/Dockerfile)
 + [`1.5.0` (1.5.0/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.5.0/Dockerfile)
 + [`1.4.0` (1.4.0/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.4.0/Dockerfile)
@@ -81,13 +82,15 @@ NAME
    wkhtmltos3 - Use webkit to convert html page to image on s3
 
 SYNOPSIS
-   wkhtmltos3 [-VP?] [-q queueUrl] [--region] [--maxNumberOfMessages] 
+   wkhtmltos3 [-q queueUrl] [--region] [--maxNumberOfMessages] 
               [--waitTimeSeconds] [--visibilityTimeout] 
-              -b bucket [-k key]
+              [-b bucket] [-k key]
               [--format] [--trim] [--width] [--height]
               [--accessKeyId] [--secretAccessKey]
-              [-V verbose] [--wkhtmltoimage]
-              [--imagemagick] [--url] [url]
+              [--wkhtmltoimage] [--redundant]
+              [--imagemagick] [--url]
+              [-? --help] [-V --verbose] [-P --profile]
+              [url]
 
 DESCRIPTION
    Convert html page specified by 'url' into a jpg image and
@@ -97,6 +100,31 @@ DESCRIPTION
    an html page to an image on s3 -OR- can be launched as a service
    that listens for messages to be posted to an aws SQS queue. If
    '--queueUrl' is specified then it will launch as a service.
+   
+   If ran as a service, the render params will be read from messages
+   posted on the SQS queue.  The message format should be as follows:
+   
+   {
+     "url": "http://website.com/retailers/767/coupons/28967/dynamic",
+     "key": "imagecache/test/queue1.jpg",
+     "trim": true,
+     "imagemagick": [
+       "-colorspace",
+       "Gray",
+       "-edge",
+       1,
+       "-negate"
+     ],
+     "wkhtmltoimage": [
+       "--zoom",
+       2.0
+     ]
+   }
+
+   As always, it is a good idea to setup a deadletter queue for messages
+   which fail processing more than a few times.  This will prevent this
+   app from infinitely retrying until a message expires out of the render
+   queue.
 
    -q, --queueUrl=queueUrl
            url of an aws SQS queue to listen for messages
@@ -126,6 +154,13 @@ DESCRIPTION
            to 1024 wide and the height usually has some padding 
            too
            see: http://www.imagemagick.org/Usage/crop/#trim
+   --redundant
+           render html page into image twice in parallel. If both 
+           image files are NOT identical then repeatedly render again 
+           until a newly rendered image matched any of the previously
+           rendered images.  Gives up after 3 additional render 
+           attempts.  This mitigates render errors caused by failures
+           in static resource loading.
    --width=pixels
            explicitly set the width for wkhtmltoimage rendering
    --height=pixels
@@ -277,6 +312,71 @@ This is a pretty minimal list.  However, wkhtmltopdf does fully support web font
 ```
 
 ...which can use web fonts from google or fonts hosted on your own web servers.
+
+### Redundant rendering
+
+If you find that a significant percentage of your page renders fail to load an arbitrary static resource then you should try using the `--redundant` option.
+
+This option renders each html page into an image twice in parallel. If both image files are NOT identical then it will repeatedly render again until a newly rendered image matched any of the previously rendered images.  Gives up after 3 additional render attempts.
+
+Since the initial 2 renders occur in parallel, there really isn't a time penalty for using this option since in the vast majority of cases the initial 2 renders will be identical.  The only downside is additional CPU load.  However, this additional load can often be well worth achieving nearly 100% perfect renders.
+
+The following shows the output of a rendundant render:
+
+```
+wkhtmltos3:
+  bucket:      webstop-dynamic-email
+  key:         imagecache/100/14a7b19b2c51e5f8dd6364fdb23eb8bcbc9f17d1653c28c7a65c7324e1d0b215.jpg
+  format:      jpg
+  url:         https://api.grocerywebsite.com:33133/retailers/767/coupons/31245/dynamic
+  redundant:   true
+
+  wkhtmltoimage (["--zoom",2])...
+  wkhtmltoimage (["--zoom",2])...
+  redundancy: success (first 2 renders matched)
+  imagemagick convert (["-trim"])...
+  uploading 57.472k to s3...
+  complete (1944 ms)
+
+Execution Profiling Log:
+    1109: complete wkhtmltoimage
+    1319: complete wkhtmltoimage
+      57: complete imagemagick convert
+     568: complete s3 upload
+    1944: total
+```
+
+Note that this render was performed with the `-P` profiling option.  See that the 2 renders took 1109ms and 1319ms.  However, since they ran in parallel (threaded), the total render time was the sum of the slowest of the 2 renders + imagemagick convert + s3 upload times.
+
+Also note, that the `wkhtmltoimage (["--zoom",2])...` log entry occurs twice then is followed with a redundancy log entry indicating the success of the match.
+
+If they don't match then you will see additional `wkhtmltoimage (["--zoom",2])...` lines followed by a message indicating the number of additional attempts.  
+
+```
+  wkhtmltoimage (["--zoom",2])...
+  wkhtmltoimage (["--zoom",2])...
+  wkhtmltoimage (["--zoom",2])...
+  wkhtmltoimage (["--zoom",2])...
+  redundancy: success (extra attempts: 2)
+  imagemagick convert (["-trim"])...
+  uploading 57.472k to s3...
+  complete (3638 ms)
+```
+
+After 3 additional attempts, if no matches are found then the very last rendered image will be used and a message indicating that it gave up finding a match will be logged.
+
+```
+  wkhtmltoimage (["--zoom",2])...
+  wkhtmltoimage (["--zoom",2])...
+  wkhtmltoimage (["--zoom",2])...
+  wkhtmltoimage (["--zoom",2])...
+  wkhtmltoimage (["--zoom",2])...
+  redundancy: success (gave up after 3 extra attempts)
+  imagemagick convert (["-trim"])...
+  uploading 54.321k to s3...
+  complete (4764 ms)
+```
+
 
 ### Running wkhtmltos3 as a service which listens to an AWS SQS queue
 
