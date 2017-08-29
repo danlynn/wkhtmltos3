@@ -296,7 +296,7 @@ function uploadToS3(imagepath, options, success, fail) {
   if (options.verbose)
     logger(options, 'log', `  uploading ${fs.statSync(imagepath).size/1000.0}k to s3...`)
 
-  const S3 = new AWS.S3(awsConfig(options));
+  const S3 = new AWS.S3(awsConfig(options, true));
 
   let contentType = 'image/*'
   if (!options.format)
@@ -630,7 +630,7 @@ function listenOnSqsQueue(options) {
     process.exit(1)
   }
 
-  const sqs = new AWS.SQS(awsConfig(options))
+  const sqs = new AWS.SQS(awsConfig(options, true))
 
   params = {
     AttributeNames: [

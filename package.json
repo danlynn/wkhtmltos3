@@ -1,6 +1,6 @@
 {
   "name": "wkhtmltos3",
-  "version": "1.8.0",
+  "version": "1.8.1",
   "description": "Retrieve webpage and render to jpg image on s3.",
   "main": "src/wkhtmltos3.js",
   "scripts": {
@@ -22,7 +22,7 @@
     "imagemagick": "0.1.3",
     "clone": "2.1.1",
     "profilelog": "danlynn/profilelog#1.0.2",
-    "awsconfig-extra": "danlynn/awsconfig-extra#debug",
+    "awsconfig-extra": "danlynn/awsconfig-extra#1.0.1",
     "md5-file": "3.1.1"
   }
 }
