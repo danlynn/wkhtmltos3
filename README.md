@@ -1,11 +1,12 @@
-This image will execute [wkhtmltoimage](https://wkhtmltopdf.org) to render an html page specified by an URL to a jpg image and then upload that image to s3.  Alternatively, this container can be launched as a service which listens to an AWS SQS queue for render messages instead of running as a cli command that renders on html page into an image then exits.
+This image will execute [wkhtmltoimage](https://wkhtmltopdf.org) to render an html page specified by an URL to a jpg image and then upload that image to s3.  Alternatively, this container can be launched as a service which listens to an AWS SQS queue for render messages instead of running as a cli command that renders an html page into an image then exits.
 
 ![stars](https://img.shields.io/docker/stars/danlynn/wkhtmltos3.svg) ![pulls](https://img.shields.io/docker/pulls/danlynn/wkhtmltos3.svg) ![automated](https://img.shields.io/docker/automated/danlynn/wkhtmltos3.svg) ![automated](https://img.shields.io/docker/build/danlynn/wkhtmltos3.svg)
 
 
 ### Supported tags and respective `Dockerfile` links
 
-+ [`1.8.0`,`latest` (1.8.0/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.8.0/Dockerfile)
++ [`1.8.1`,`latest` (1.8.1/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.8.1/Dockerfile)
++ [`1.8.0` (1.8.0/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.8.0/Dockerfile)
 + [`1.7.1` (1.7.1/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.7.1/Dockerfile)
 + [`1.6.0` (1.6.0/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.6.0/Dockerfile)
 + [`1.5.0` (1.5.0/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.5.0/Dockerfile)
