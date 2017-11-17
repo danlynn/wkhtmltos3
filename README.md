@@ -425,7 +425,7 @@ $ docker run --rm -it -v $(pwd):/myapp --entrypoint=/bin/bash -e ACCESS_KEY_ID=A
 Then from the bash prompt in the container, run the script with your modifications via:
 
 ```bash
-root@684fc69c5877:/myapp$ node wkhtmltos3.js -V -b my-unique-bucket -k 123/profile12345.jpg 'http://some.com/retailers/123/users/12345/profile.html'
+root@684fc69c5877:/myapp$ node src/wkhtmltos3.js -V -b my-unique-bucket -k 123/profile12345.jpg 'http://some.com/retailers/123/users/12345/profile.html'
 
 wkhtmltos3:
   bucket:      my-unique-bucket

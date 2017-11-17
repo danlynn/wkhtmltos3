@@ -384,7 +384,7 @@ function imagemagickConvert(imagepath, options, success, fail) {
  */
 function wkhtmltoimage(options, imagepath, success, fail) {
   let cacheDir = '/tmp/wkhtmltoimage_cache'
-  fs.mkdirsSync(path.dirname(cacheDir))
+  fs.mkdirsSync(cacheDir)
   fs.mkdirsSync(path.dirname(imagepath))
 
   let generateOptions = []
