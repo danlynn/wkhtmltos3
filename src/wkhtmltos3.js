@@ -282,6 +282,16 @@ function logger(options, level, verbose_msg, short_msg = null) {
 
 
 /**
+ * Get the version string in the format "wkhtmltos3 1.8.1"
+ * @return {string} version string
+ */
+function version() {
+  let packageJson = JSON.parse(fs.readFileSync('package.json', "utf8"))
+  return `${packageJson.name} ${packageJson.version}`
+}
+
+
+/**
  * Upload file specified by 'imagepath' to Amazon s3.
  *
  * @see https://www.npmjs.com/package/s3
@@ -619,6 +629,7 @@ function listenOnSqsQueue(options) {
   const waitTimeSeconds = options.waitTimeSeconds || 10
   const visibilityTimeout = options.visibilityTimeout || 15
 
+  console.log(`  version:             ${version()}`)
   console.log(`  queueUrl:            ${queueUrl}`)
   console.log(`  region:              ${options.region}`)
   console.log(`  maxNumberOfMessages: ${maxNumberOfMessages}`)
@@ -717,8 +728,7 @@ function main() {
   }
 
   if (options.version) {
-    let packageJson = JSON.parse(fs.readFileSync('package.json', "utf8"))
-    console.log(`${packageJson.name} ${packageJson.version}`)
+    console.log(version())
     process.exit()
   }
 
