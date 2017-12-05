@@ -2,12 +2,13 @@
 // TODO: switch profileLog to create and use a new instance with each renderPage() call
 
 
-const childProcess = require('child_process')
+const os = require('os')                              // node
+const path = require('path')                          // node
+const childProcess = require('child_process')         // node
 const imagemagick = require('imagemagick')            // https://github.com/yourdeveloper/node-imagemagick
 const commandLineArgs = require('command-line-args')  // https://github.com/75lb/command-line-args
 const AWS = require('aws-sdk')                        // https://github.com/aws/aws-sdk-js
 const fs = require('fs-extra')                        // https://github.com/jprichardson/node-fs-extra
-const path = require('path')
 const clone = require('clone')                        // https://github.com/pvorb/clone
 const md5File = require('md5-file')                   // https://github.com/roryrjb/md5-file
 const ProfileLog = require('profilelog').default      // https://github.com/danlynn/profilelog
@@ -83,6 +84,14 @@ DESCRIPTION
            available to be received again (in case error occurred
            and the message was not processed then deleted)
            (default 15 seconds)
+   --maxMemLoad=number
+           Amount of memory load before switches from parallel to sequential
+           processing of SQS queue messages.  Must be between 0.0 and 1.0.
+           Defaults to 0.5.
+   --maxCpuLoad=number
+           Amount of average cpu load for the last minute before switches from 
+           parallel to sequential processing of SQS queue messages.  Must be 
+           between 0.0 and 1.0. Defaults to 0.5.
    -b, --bucket=bucket_name
            amazon s3 bucket destination
    -k, --key=filename
@@ -151,6 +160,8 @@ const optionDefinitions = [
   {name: 'maxNumberOfMessages',      type: Number}, // number to process at a time
   {name: 'waitTimeSeconds',          type: Number}, // >0 causes long polling
   {name: 'visibilityTimeout',        type: Number}, // allow try again in case of fail
+  {name: 'maxMemLoad',               type: Number}, // float between 0.0 and 1.0
+  {name: 'maxCpuLoad',               type: Number}, // float between 0.0 and 1.0
   {name: 'bucket',       alias: 'b', type: String},
   {name: 'key',          alias: 'k', type: String},
   {name: 'format',                   type: String},
@@ -394,8 +405,26 @@ function imagemagickConvert(imagepath, options, success, fail) {
  */
 function wkhtmltoimage(options, imagepath, success, fail) {
   let cacheDir = '/tmp/wkhtmltoimage_cache'
-  fs.mkdirsSync(cacheDir)
-  fs.mkdirsSync(path.dirname(imagepath))
+  try {
+    fs.mkdirsSync(cacheDir)
+  }
+  catch (error) {
+    logger(options, 'error',
+      `  failed: mkdirs('${cacheDir}'): ${error}\n`,
+      `wkhtmltos3: fail render: ${options.url} => s3:${options.bucket}:${options.key} (mkdirs('${cacheDir}') failed: ${error.stack || error})`
+    )
+    fail()
+  }
+  try {
+    fs.mkdirsSync(path.dirname(imagepath))
+  }
+  catch (error) {
+    logger(options, 'error',
+      `  failed: mkdirs('${path.dirname(imagepath)}'): ${error}\n`,
+      `wkhtmltos3: fail render: ${options.url} => s3:${options.bucket}:${options.key} (mkdirs('${path.dirname(imagepath)}') failed: ${error.stack || error})`
+    )
+    fail()
+  }
 
   let generateOptions = []
   if (options.width)
@@ -584,6 +613,27 @@ function mergeOptions(options, overrides) {
 
 
 /**
+ * Determine if either the memory usage and cpu usage are over the limits
+ * specified by the --maxMemLoad and --maxCpuLoad options.  If either
+ * option is not specified then it will default to 0.5 (50%).
+ *
+ * @param options {Object} original commandLineArgs options
+ * @return {boolean} true if system is NOT overloaded
+ */
+function systemOverloaded(options) {
+  const totalMem = os.totalmem()
+  const memLoad = (totalMem - os.freemem()) / totalMem
+  const cpuLoad = os.loadavg()[0] // ave cpu load for last minute
+  const configMaxMemLoad = options.maxMemLoad || 0.5
+  const configMaxCpuLoad = options.maxCpuLoad || 0.5
+  const systemOverloaded = memLoad > options.maxMemLoad || cpuLoad > options.maxCpuLoad
+  if (options.verbose)
+    console.log(`receiveMessage: (memLoad: ${memLoad} > ${configMaxMemLoad} || cpuLoad: ${cpuLoad} > ${configMaxCpuLoad}): ${String(systemOverloaded).toUpperCase()}`)
+  return systemOverloaded
+}
+
+
+/**
  * Run forever as an SQS queue listener service.
  *
  * @param options {{
@@ -655,23 +705,45 @@ function listenOnSqsQueue(options) {
     WaitTimeSeconds: waitTimeSeconds
   }
 
-  let delay = 0 // millisecs between queue requests
   function receiveMessage() {
     sqs.receiveMessage(params, function(error, data) {
-      if (delay > 0)
-        setTimeout(receiveMessage, delay)
-      else
-        setImmediate(receiveMessage) // loop as soon as message received/timeout/error
       if (error) {
-        delay = 20000 // millisecs to wait before trying again
-        console.log(`receiveMessage: fail (delay: ${delay} ms): ${error.stack || error}`)
+        console.log(`receiveMessage: fail: ${error.stack || error}`)
+        // delay because error occurred (like missing queue)
+        setTimeout(() => {
+          logger(options, 'log', `receiveMessage: re-invoking receiveMessage() after 20 sec delay because sqs.receiveMessage() failed`)
+          receiveMessage()
+        }, 20000)
       }
       else {
-        delay = 0 // millisecs
         if (!data.Messages) {
           // logger(options, 'log', `receiveMessage: none (data: ${JSON.stringify(data)})`)
+          setImmediate(receiveMessage) // invoke loop
         }
         else {
+          let remainingMessagesCount = data.Messages.length
+          if (!systemOverloaded(options)) {
+            // spawn another (non-re-invoking) thread as soon as message received/timeout/error
+            setTimeout(() => {
+              logger(options, 'log', `receiveMessage: re-invoking receiveMessage() immediately because system is NOT overloaded`)
+              receiveMessage()
+            }, 50) // slight delay so threads don't spawn too fast to sense system load
+          }
+          else {
+            const start = new Date()
+            const interval = setInterval(() => {
+              const elapsed = new Date() - start
+              // console.log(`------ remainingMessagesCount: ${remainingMessagesCount}, elapsed: ${new Date() - start}`)
+              if (remainingMessagesCount <= 0 || elapsed > 20000) {
+                if (remainingMessagesCount <= 0)
+                  logger(options, 'log', `receiveMessage: re-invoking receiveMessage() after processing (${elapsed} ms) because system IS overloaded`)
+                else
+                  logger(options, 'log', `receiveMessage: re-invoking receiveMessage() after TIMEOUT while processing (${elapsed} ms) because system IS overloaded`)
+                clearInterval(interval)
+                receiveMessage()
+              }
+            }, 100)
+          }
           try {
             logger(options, 'log', `receiveMessage: successfully received messages: \n${JSON.stringify(data.Messages.map(function (m) {
               return JSON.parse(m.Body)
@@ -692,16 +764,19 @@ function listenOnSqsQueue(options) {
                       logger(options, 'log', `receiveMessage: delete: success: ${JSON.stringify(data)}`)
                     }
                   })
+                  remainingMessagesCount -= 1
                   profileLog.writeToConsole(true)
                 },
                 function () {
                   logger(options, 'error', null, `receiveMessage: fail processing message:\n${JSON.stringify(message.Body)}`)
+                  remainingMessagesCount -= 1
                   profileLog.writeToConsole(true)
                 }
               )
             }
           }
           catch (error) {
+            remainingMessagesCount = 0
             logger(options, 'error', null, `receiveMessage: fail parsing messages:\n${JSON.stringify(data)}\n${error.stack || error}`)
           }
         }
