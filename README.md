@@ -5,7 +5,8 @@ This image will execute [wkhtmltoimage](https://wkhtmltopdf.org) to render an ht
 
 ### Supported tags and respective `Dockerfile` links
 
-+ [`1.8.1`,`latest` (1.8.1/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.8.1/Dockerfile)
++ [`1.9.0`,`latest` (1.9.0/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.9.0/Dockerfile)
++ [`1.8.1` (1.8.1/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.8.1/Dockerfile)
 + [`1.8.0` (1.8.0/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.8.0/Dockerfile)
 + [`1.7.1` (1.7.1/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.7.1/Dockerfile)
 + [`1.6.0` (1.6.0/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.6.0/Dockerfile)
@@ -34,9 +35,9 @@ wkhtmltos3:
   key:         123/profile12345.jpg
   format:      jpg
   url:         http://some.com/retailers/123/users/12345/profile.html
+  redundant:   false
 
-  wkhtmltoimage ({})...
-  imagemagick convert ([])...
+  wkhtmltoimage ([])...
   uploading 32.57k to s3...
   complete
 ```
@@ -50,10 +51,9 @@ wkhtmltos3:
   bucket:      my-unique-bucket
   key:         123/profile12345.jpg
   url:         http://some.com/retailers/123/users/12345/profile.html
+  redundant:   false
 
-  rendering jpg...
-  wkhtmltoimage ({})...
-  imagemagick convert ([])...
+  wkhtmltoimage ([])...
   uploading 32.57k to s3...
   complete
 ```
@@ -143,6 +143,14 @@ DESCRIPTION
            available to be received again (in case error occurred
            and the message was not processed then deleted)
            (default 15 seconds)
+   --maxMemLoad=number
+           Amount of memory load before switches from parallel to sequential
+           processing of SQS queue messages.  Must be between 0.0 and 1.0.
+           Defaults to 0.5.
+   --maxCpuLoad=number
+           Amount of average cpu load for the last minute before switches from 
+           parallel to sequential processing of SQS queue messages.  Must be 
+           between 0.0 and 1.0. Defaults to 0.5.
    -b, --bucket=bucket_name
            amazon s3 bucket destination
    -k, --key=filename
@@ -218,7 +226,7 @@ However, if the automatic nature of this feature doesn't work for the types of h
 
 ### Pass-through config options
 
-The `--wkhtmltoimage` and `--imagemagick` options allow you to pass through options directly to the wkhtmltoimage binary and imagemagick node module. This exposes some really useful capabilities.
+The `--wkhtmltoimage` and `--imagemagick` options allow you to pass through options directly to the wkhtmltoimage binary and imagemagick node module. This exposes some really useful capabilities.  Note that these pass-through options have equivalents when running in AWS SQS queue listening mode.
 
 #### --wkhtmltoimage options
 
@@ -232,6 +240,7 @@ wkhtmltos3:
   key:         123/profile12345.jpg
   format:      jpg
   url:         http://some.com/retailers/123/users/12345/profile.html
+  redundant:   false
 
   wkhtmltoimage (["--zoom", 2.0])...
   imagemagick convert ([])...
@@ -257,7 +266,8 @@ wkhtmltos3:
   key:         123/14106.jpg
   format:      jpg
   url:         http://some.com/retailers/123/coupons/14106
-
+  redundant:   false
+  
   wkhtmltoimage ([])...
   imagemagick convert (["-trim","-colorspace","Gray","-edge",1,"-negate"])...
   uploading 32.57k to s3...
@@ -384,7 +394,7 @@ After 3 additional attempts, if no matches are found then the very last rendered
 If you start the docker container passing the optional `--queueUrl=<queueUrl>` and `--region=<region>` options then wkhtmltos3 will run as a service that runs continuously listening for render messages on the AWS SQS (Simple Queue Service).  Note that the AWS SQS must be setup such that it is backed by Redis (not Memcache).
 
 ```bash
-$ node src/wkhtmltos3.js -V --queueUrl https://sqs.us-east-1.amazonaws.com/018867421119/dynamic-email-render --region=us-east-1 -b webstop-dynamic-email --trim -P
+$ node src/wkhtmltos3.js -V --queueUrl https://sqs.us-east-1.amazonaws.com/012345678901/render-queue --region=us-east-1 -b my-unique-bucket --trim -P
 ```
 
 Any options that are passed on the command line when launching as a service will act as defaults which will be overridden by options provided in the render messages.
@@ -405,6 +415,18 @@ Some command line options are not valid and will be ignored if they appear in th
 
 You can try out different render messages manually in the SQS Management Console by selecting your queue and then selecting 'Send a Message' from the 'Queue Actions' drop-down.
 
+
+### Limiting Memory and CPU Usage
+
+When running as an AWS SQS queue listener, it is possible for a very large number of queue messages to appear all at once.  Normally, the queue processing reads a block (`--maxNumberOfMessages` option) of messages off the queue for processing in parallel.  As soon as the message(s) are read off of the queue, it immediately (50 ms delay) starts another thread listening for the next block of messages.  This can quickly spawn a ton of threads reading and processing ALL the messages in parallel.  To prevent this, the `--maxMemLoad` and `--maxCpuLoad` options default to 0.5 (50% memory & 50% cpu usage).  If either the amount of memory used OR the average cpu load over the last 1 minute exceeds their respective config option then instead of "immediately" starting another queue listener thread, the process will wait until all the messages in the current block have been rendered before invoking a thread to start listening for the next block of messages.  This means that this docker container will never significantly exceed the max memory and cpu load options.
+
+If you setup auto-scaling on your docker images then simply make sure that you set their load thresholds below the `--maxMemLoad` and `--maxCpuLoad` options.  Otherwise, the auto-scaling may never kick-in.
+
+Do not set the `--maxMemLoad` and `--maxCpuLoad` options to 1.0 (100%) since this could lead in the worst case to resource contention with very few renders succeeding.
+
+**TROUBLESHOOTING TIP:** If you are doing development on your local machine and the queue processed renders seem to be slow and not running in parallel then your local system load probably has exceeded the *default* 50% level (especially in RAM).  The processing will still take place, but only one block of messages will be process at a time (in parallel).  Feel free to increase the `--maxMemLoad` and `--maxCpuLoad` options if you want them to scale asynchronously on your local dev machine.
+
+
 ### How to develop/customize wkhtmltos3
 
 Check out the project from github at: [https://github.com/danlynn/wkhtmltos3](https://github.com/danlynn/wkhtmltos3)
@@ -412,15 +434,18 @@ Check out the project from github at: [https://github.com/danlynn/wkhtmltos3](ht
 Make changes to the Dockerfile and build with:
 
 ```bash
-$ docker build -t danlynn/wkhtmltos3:1.1.0 .
+$ docker build -t danlynn/wkhtmltos3:1.9.0 -t danlynn/wkhtmltos3:latest .
 ```
 
 ...replacing the tag (-t) value as needed.
 
-Launch the image and make interactive changes to the wkhtmltos3.js by mounting the current project directory in the container and opening a bash prompt via:
+Launch the image and make interactive changes to the wkhtmltos3.js by mounting the current project directory in the container and opening a bash prompt via the helpful `bash` shell script.  Note that this script uses the `danlynn/wkhtmltos3:latest` image and maps your current directory to /myapp.  All the dependencies are already installed in the image.  However, if you have updated any of the dependencies then you will need to build and tag the image as `danlynn/wkhtmltos3:latest`.
 
 ```bash
-$ docker run --rm -it -v $(pwd):/myapp --entrypoint=/bin/bash -e ACCESS_KEY_ID=AKIA000NOTREALKEY000 -e SECRET_ACCESS_KEY=l2r+0000000NotRealSecretAccessKey0000000 danlynn/wkhtmltos3:1.1.0
+hostOS$ export ACCESS_KEY_ID=AKIA000NOTREALKEY000
+hostOS$ export SECRET_ACCESS_KEY=l2r+0000000NotRealSecretAccessKey0000000
+hostOS$ ./bash
+docker# 
 ```
 
 Then from the bash prompt in the container, run the script with your modifications via:
@@ -433,9 +458,9 @@ wkhtmltos3:
   key:         123/profile12345.jpg
   format:      jpg
   url:         http://some.com/retailers/123/users/12345/profile.html
-
-  wkhtmltoimage ({})...
-  imagemagick convert ([])...
+  redundant:   false
+  
+  wkhtmltoimage ([])...
   uploading 32.57k to s3...
   complete
 ```
