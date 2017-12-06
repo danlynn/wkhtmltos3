@@ -289,7 +289,7 @@ node module: [https://www.npmjs.com/package/imagemagick](https://www.npmjs.com/p
 The docker container has only the default fonts available on the Debian 8 base image.  These fonts can be displayed by launching the container into bash and using the `fc-list` command:
 
 ```bash
-root@684fc69c5877:/myapp$ fc-list
+root@684fc69c5877:/myapp# fc-list
 
 /usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf: DejaVu Serif:style=Bold
 /usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf: DejaVu Sans Mono:style=Book
@@ -336,10 +336,10 @@ The following shows the output of a rendundant render:
 
 ```
 wkhtmltos3:
-  bucket:      webstop-dynamic-email
-  key:         imagecache/100/14a7b19b2c51e5f8dd6364fdb23eb8bcbc9f17d1653c28c7a65c7324e1d0b215.jpg
+  bucket:      my-unique-bucket
+  key:         123/14106.jpg
   format:      jpg
-  url:         https://api.grocerywebsite.com:33133/retailers/767/coupons/31245/dynamic
+  url:         http://some.com/retailers/123/coupons/14106
   redundant:   true
 
   wkhtmltoimage (["--zoom",2])...
@@ -404,11 +404,11 @@ The format of the render messages should be as a JSON object where the attribute
 Example JSON render messages:
 
 ```json
-{"url": "http://api.grocerywebsite.com/retailers/767/coupons/28967/dynamic", "key": "test/queue1.jpg", "trim": true, "imagemagick": ["-trim","-colorspace","Gray", "-edge",1,"-negate"], "wkhtmltoimage": ["--zoom", 2.0]}
-{"url": "http://api.grocerywebsite.com/retailers/767/coupons/28967/dynamic", "key": "test/queue2.jpg", "trim": true, "wkhtmltoimage": ["--zoom", 2.0]}
-{"url": "http://api.grocerywebsite.com/retailers/767/coupons/28967/dynamic", "key": "test/queue3.jpg", "trim": true, "imagemagick": ["-trim","-colorspace","Gray", "-edge",1,"-negate"]}
-{"url": "http://api.grocerywebsite.com/retailers/767/coupons/28967/dynamic", "key": "test/queue4.jpg", "trim": true}
-{"url": "http://api.grocerywebsite.com/retailers/767/coupons/28967/dynamic", "key": "test/queue5.jpg"}
+{"url": "http://some.com/retailers/123/coupons/14101", "key": "test/queue1.jpg", "trim": true, "wkhtmltoimage": ["--zoom", 2.0], "imagemagick": ["-trim","-colorspace","Gray", "-edge",1,"-negate"]}
+{"url": "http://some.com/retailers/123/coupons/14102", "key": "test/queue2.jpg", "trim": true, "wkhtmltoimage": ["--zoom", 2.0]}
+{"url": "http://some.com/retailers/123/coupons/14103", "key": "test/queue3.jpg", "trim": true, "imagemagick": ["-trim","-colorspace","Gray", "-edge",1,"-negate"]}
+{"url": "http://some.com/retailers/123/coupons/14104", "key": "test/queue4.jpg", "trim": true}
+{"url": "http://some.com/retailers/123/coupons/14105", "key": "test/queue5.jpg"}
 ```
 
 Some command line options are not valid and will be ignored if they appear in the render messages.  The ignored options are: `--queueUrl`, `--region`, `--maxNumberOfMessages`, `--waitTimeSeconds`, `--visibilityTimeout`, `--accessKeyId`, `--secretAccessKey`
@@ -451,7 +451,7 @@ docker#
 Then from the bash prompt in the container, run the script with your modifications via:
 
 ```bash
-root@684fc69c5877:/myapp$ node src/wkhtmltos3.js -V -b my-unique-bucket -k 123/profile12345.jpg 'http://some.com/retailers/123/users/12345/profile.html'
+root@684fc69c5877:/myapp# node src/wkhtmltos3.js -V -b my-unique-bucket -k 123/profile12345.jpg 'http://some.com/retailers/123/users/12345/profile.html'
 
 wkhtmltos3:
   bucket:      my-unique-bucket
@@ -463,4 +463,18 @@ wkhtmltos3:
   wkhtmltoimage ([])...
   uploading 32.57k to s3...
   complete
+```
+
+Or, launch it in AWS SQS queue listener mode via:
+
+```bash
+root@684fc69c5877:/myapp# node src/wkhtmltos3.js -V --queueUrl https://sqs.us-east-1.amazonaws.com/012345678901/render-queue --region=us-east-1 -b my-unique-bucket
+
+listenOnSqsQueue: started
+  version:             wkhtmltos3 1.9.0
+  queueUrl:            https://sqs.us-east-1.amazonaws.com/012345678901/render-queue
+  region:              us-east-1
+  maxNumberOfMessages: 5
+  waitTimeSeconds:     10
+  visibilityTimeout:   15
 ```
