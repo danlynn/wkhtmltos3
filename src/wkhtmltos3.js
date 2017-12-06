@@ -628,7 +628,7 @@ function systemOverloaded(options) {
   const configMaxCpuLoad = options.maxCpuLoad || 0.5
   const systemOverloaded = memLoad > configMaxMemLoad || cpuLoad > configMaxCpuLoad
   if (options.verbose)
-    console.log(`receiveMessage: (memLoad: ${memLoad} > ${configMaxMemLoad} || cpuLoad: ${cpuLoad} > ${configMaxCpuLoad}): ${String(systemOverloaded).toUpperCase()}`)
+    console.log(`receiveMessage: ${systemOverloaded ? 'system load HIGH' : 'system load low'} (memLoad: ${memLoad} > ${configMaxMemLoad} || cpuLoad: ${cpuLoad} > ${configMaxCpuLoad})`)
   return systemOverloaded
 }
 

@@ -445,7 +445,7 @@ Launch the image and make interactive changes to the wkhtmltos3.js by mounting t
 hostOS$ export ACCESS_KEY_ID=AKIA000NOTREALKEY000
 hostOS$ export SECRET_ACCESS_KEY=l2r+0000000NotRealSecretAccessKey0000000
 hostOS$ ./bash
-docker# 
+docker$ 
 ```
 
 Then from the bash prompt in the container, run the script with your modifications via:
