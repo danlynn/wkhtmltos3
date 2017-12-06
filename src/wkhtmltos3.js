@@ -626,7 +626,7 @@ function systemOverloaded(options) {
   const cpuLoad = os.loadavg()[0] // ave cpu load for last minute
   const configMaxMemLoad = options.maxMemLoad || 0.5
   const configMaxCpuLoad = options.maxCpuLoad || 0.5
-  const systemOverloaded = memLoad > options.maxMemLoad || cpuLoad > options.maxCpuLoad
+  const systemOverloaded = memLoad > configMaxMemLoad || cpuLoad > configMaxCpuLoad
   if (options.verbose)
     console.log(`receiveMessage: (memLoad: ${memLoad} > ${configMaxMemLoad} || cpuLoad: ${cpuLoad} > ${configMaxCpuLoad}): ${String(systemOverloaded).toUpperCase()}`)
   return systemOverloaded
@@ -718,7 +718,7 @@ function listenOnSqsQueue(options) {
       else {
         if (!data.Messages) {
           // logger(options, 'log', `receiveMessage: none (data: ${JSON.stringify(data)})`)
-          setImmediate(receiveMessage) // invoke loop
+          setTimeout(receiveMessage, 0) // invoke loop
         }
         else {
           let remainingMessagesCount = data.Messages.length
