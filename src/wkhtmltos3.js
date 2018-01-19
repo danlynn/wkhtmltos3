@@ -386,7 +386,7 @@ function imagemagickConvert(imagepath, options, success, fail) {
       profileLog.addEntry(start, 'complete imagemagick convert')
       fs.remove(imagepath, error => {
         if (error)
-          console.log(`    warning: failed to delete original image: ${error.stack || error}`)
+          logger(options, 'error', null, `    warning: failed to delete image: ${error.stack || error}`)
       })
       success(destpath, options)
     }
@@ -514,7 +514,12 @@ function wkhtmltoimageRedundant(options, imagepath, success, fail) {
           message = `gave up after ${options.renderAttempts - 2} extra attempts`
         logger(options, 'log', `  redundancy: success (${message})`)
         fs.moveSync(tempImagePath, imagepath, { overwrite: true })
-        // TODO: delete all attempts left
+        for (deleteimagepath of imagepaths) {
+          fs.remove(deleteimagepath, error => {
+            if (error)
+              logger(options, 'error', null, `    warning: failed to delete image: ${error.stack || error}`)
+          })
+        }
         success()
       }
       else {
@@ -749,9 +754,12 @@ function listenOnSqsQueue(options) {
               return JSON.parse(m.Body)
             }), null, 2)}`)
             for (let message of data.Messages) {
+              let renderPageOptions = mergeOptions(options, JSON.parse(message.Body))
+              // TODO: skip if hash of 'renderPageOptions' already exists in cache
               renderPage(
-                mergeOptions(options, JSON.parse(message.Body)),
+                renderPageOptions,
                 function () {
+                  // TODO: add entry into cache key'd by hash of 'renderPageOptions'
                   const deleteParams = {
                     QueueUrl: queueUrl,
                     ReceiptHandle: data.Messages[0].ReceiptHandle
