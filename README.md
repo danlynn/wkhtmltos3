@@ -20,7 +20,7 @@ This image will execute [wkhtmltoimage](https://wkhtmltopdf.org) to render an ht
 
 Note: The current version only supports rendering images.  Stay tuned for a future release that also supports rendering to PDF.
 
-`wkhtmltopdf/wkhtmltoimage 0.12.4 + aws-sdk 2.80.0 + imagemagick 6.8.9-9 Q16 + node 6.11.0`
+`wkhtmltopdf/wkhtmltoimage 0.12.4 + aws-sdk 2.80.0 + imagemagick 8:6.8.9.9-5+deb8u9 + node 6.11.0`
 
 ### How to use
 

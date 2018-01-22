@@ -769,7 +769,7 @@ function listenOnSqsQueue(options) {
       else {
         if (!data.Messages) {
           // logger(options, 'log', `receiveMessage: none (data: ${JSON.stringify(data)})`)
-          setTimeout(receiveMessage, 0) // invoke loop
+          setTimeout(receiveMessage, 0) // re-invoke loop due to VisibilityTimeout occuring without any new messages
         }
         else {
           let remainingMessagesCount = data.Messages.length
