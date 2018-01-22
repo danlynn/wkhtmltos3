@@ -11,11 +11,13 @@ const AWS = require('aws-sdk')                        // https://github.com/aws/
 const fs = require('fs-extra')                        // https://github.com/jprichardson/node-fs-extra
 const clone = require('clone')                        // https://github.com/pvorb/clone
 const md5File = require('md5-file')                   // https://github.com/roryrjb/md5-file
+const LRU = require('lru-cache')                      // https://github.com/isaacs/node-lru-cache
 const ProfileLog = require('profilelog').default      // https://github.com/danlynn/profilelog
 const awsConfig = require('awsconfig-extra').default  // https://github.com/danlynn/awsconfig-extra
 
 
 const profileLog = new ProfileLog()
+let messageCache = null
 
 
 function displayHelp() {
@@ -26,6 +28,7 @@ NAME
 SYNOPSIS
    wkhtmltos3 [-q queueUrl] [--region] [--maxNumberOfMessages] 
               [--waitTimeSeconds] [--visibilityTimeout] 
+              [--dedupeCacheMax] [--dedupeCacheMaxAge]
               [-b bucket] [-k key]
               [--format] [--trim] [--width] [--height]
               [--accessKeyId] [--secretAccessKey]
@@ -84,6 +87,16 @@ DESCRIPTION
            available to be received again (in case error occurred
            and the message was not processed then deleted)
            (default 15 seconds)
+   --dedupeCacheMax=number
+           Maximum number of unique render messages to retain in the dedupe
+           cache limiting memory size. Defaults to 500.  Set to 0 to disable
+           feature.
+   --dedupeCacheMaxAge=number
+           Each render message will be retained in the dedupe cache for this 
+           many seconds.  If a duplicate render message is received within
+           this period of time from when the original message was received then
+           that duplicate render message will be ignored.  Defaults to 60 secs.
+           Set to 0 to disable feature.
    --maxMemLoad=number
            Amount of memory load before switches from parallel to sequential
            processing of SQS queue messages.  Must be between 0.0 and 1.0.
@@ -160,6 +173,8 @@ const optionDefinitions = [
   {name: 'maxNumberOfMessages',      type: Number}, // number to process at a time
   {name: 'waitTimeSeconds',          type: Number}, // >0 causes long polling
   {name: 'visibilityTimeout',        type: Number}, // allow try again in case of fail
+  {name: 'dedupeCacheMax',           type: Number}, // allow try again in case of fail
+  {name: 'dedupeCacheMaxAge',        type: Number}, // allow try again in case of fail
   {name: 'maxMemLoad',               type: Number}, // float between 0.0 and 1.0
   {name: 'maxCpuLoad',               type: Number}, // float between 0.0 and 1.0
   {name: 'bucket',       alias: 'b', type: String},
@@ -683,13 +698,29 @@ function listenOnSqsQueue(options) {
   const maxNumberOfMessages = options.maxNumberOfMessages || 5
   const waitTimeSeconds = options.waitTimeSeconds || 10
   const visibilityTimeout = options.visibilityTimeout || 15
+  const dedupeCacheMax = options.dedupeCacheMax || 500
+  const dedupeCacheMaxAge = options.dedupeCacheMaxAge || 60
+
+  if (options.dedupeCacheMax !== 0 && options.dedupeCacheMaxAge !== 0) {
+    messageCache = LRU({
+      max: dedupeCacheMax,
+      maxAge: dedupeCacheMaxAge * 1000
+    })
+  }
 
   console.log(`  version:             ${version()}`)
   console.log(`  queueUrl:            ${queueUrl}`)
   console.log(`  region:              ${options.region}`)
   console.log(`  maxNumberOfMessages: ${maxNumberOfMessages}`)
-  console.log(`  waitTimeSeconds:     ${waitTimeSeconds}`)
-  console.log(`  visibilityTimeout:   ${visibilityTimeout}\n`)
+  console.log(`  waitTimeSeconds:     ${waitTimeSeconds} secs`)
+  console.log(`  visibilityTimeout:   ${visibilityTimeout} secs`)
+  if (messageCache) {
+    console.log(`  dedupeCacheMax:      ${dedupeCacheMax} messages`)
+    console.log(`  dedupeCacheMaxAge:   ${dedupeCacheMaxAge} secs`)
+  }
+  else
+    console.log(`  message dedupe:      disabled`)
+  console.log("\n")
 
   if (!options.region) {
     console.error('ERROR: --region is required when --queueUrl is specified')
@@ -708,6 +739,21 @@ function listenOnSqsQueue(options) {
     QueueUrl: queueUrl,
     VisibilityTimeout: visibilityTimeout,
     WaitTimeSeconds: waitTimeSeconds
+  }
+
+  function deleteMessage(receiptHandle) {
+    const deleteParams = {
+      QueueUrl: queueUrl,
+      ReceiptHandle: receiptHandle
+    }
+    logger(options, 'log', `receiveMessage: delete...`)
+    sqs.deleteMessage(deleteParams, function (error, data) {
+      if (error) {
+        console.error(`receiveMessage: delete: fail: ${error.stack || error}`)
+      } else {
+        logger(options, 'log', `receiveMessage: delete: success: ${JSON.stringify(data)}`)
+      }
+    })
   }
 
   function receiveMessage() {
@@ -755,32 +801,31 @@ function listenOnSqsQueue(options) {
             }), null, 2)}`)
             for (let message of data.Messages) {
               let renderPageOptions = mergeOptions(options, JSON.parse(message.Body))
-              // TODO: skip if hash of 'renderPageOptions' already exists in cache
-              renderPage(
-                renderPageOptions,
-                function () {
-                  // TODO: add entry into cache key'd by hash of 'renderPageOptions'
-                  const deleteParams = {
-                    QueueUrl: queueUrl,
-                    ReceiptHandle: data.Messages[0].ReceiptHandle
+              let messageCacheKey = JSON.stringify(renderPageOptions)
+              if (!messageCache || !messageCache.has(messageCacheKey)) {
+                if (messageCache)
+                  messageCache.set(messageCacheKey, true) // skip any requests until actual render failure occurs
+                renderPage(
+                  renderPageOptions,
+                  function () {
+                    deleteMessage(data.Messages[0].ReceiptHandle)
+                    remainingMessagesCount -= 1
+                    profileLog.writeToConsole(true)
+                  },
+                  function () {
+                    if (messageCache)
+                      messageCache.del(messageCacheKey) // try to render next time
+                    logger(options, 'error', null, `receiveMessage: fail processing message:\n${JSON.stringify(message.Body)}`)
+                    remainingMessagesCount -= 1
+                    profileLog.writeToConsole(true)
                   }
-                  logger(options, 'log', `receiveMessage: delete...`)
-                  sqs.deleteMessage(deleteParams, function (error, data) {
-                    if (error) {
-                      console.error(`receiveMessage: delete: fail: ${error.stack || error}`)
-                    } else {
-                      logger(options, 'log', `receiveMessage: delete: success: ${JSON.stringify(data)}`)
-                    }
-                  })
-                  remainingMessagesCount -= 1
-                  profileLog.writeToConsole(true)
-                },
-                function () {
-                  logger(options, 'error', null, `receiveMessage: fail processing message:\n${JSON.stringify(message.Body)}`)
-                  remainingMessagesCount -= 1
-                  profileLog.writeToConsole(true)
-                }
-              )
+                )
+              }
+              else {
+                logger(options, 'log', `receiveMessage: skipping and deleting duplicate render message`)
+                deleteMessage(data.Messages[0].ReceiptHandle)
+                remainingMessagesCount -= 1
+              }
             }
           }
           catch (error) {

@@ -5,7 +5,8 @@ This image will execute [wkhtmltoimage](https://wkhtmltopdf.org) to render an ht
 
 ### Supported tags and respective `Dockerfile` links
 
-+ [`1.9.0`,`latest` (1.9.0/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.9.0/Dockerfile)
++ [`1.10.0`,`latest` (1.10.0/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.10.0/Dockerfile)
++ [`1.9.0` (1.9.0/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.9.0/Dockerfile)
 + [`1.8.1` (1.8.1/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.8.1/Dockerfile)
 + [`1.8.0` (1.8.0/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.8.0/Dockerfile)
 + [`1.7.1` (1.7.1/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.7.1/Dockerfile)
@@ -85,6 +86,7 @@ NAME
 SYNOPSIS
    wkhtmltos3 [-q queueUrl] [--region] [--maxNumberOfMessages] 
               [--waitTimeSeconds] [--visibilityTimeout] 
+              [--dedupeCacheMax] [--dedupeCacheMaxAge]
               [-b bucket] [-k key]
               [--format] [--trim] [--width] [--height]
               [--accessKeyId] [--secretAccessKey]
@@ -143,6 +145,16 @@ DESCRIPTION
            available to be received again (in case error occurred
            and the message was not processed then deleted)
            (default 15 seconds)
+   --dedupeCacheMax=number
+           Maximum number of unique render messages to retain in the dedupe
+           cache limiting memory size. Defaults to 500.  Set to 0 to disable
+           feature.
+   --dedupeCacheMaxAge=number
+           Each render message will be retained in the dedupe cache for this 
+           many seconds.  If a duplicate render message is received within
+           this period of time from when the original message was received then
+           that duplicate render message will be ignored.  Defaults to 60 secs.
+           Set to 0 to disable feature.
    --maxMemLoad=number
            Amount of memory load before switches from parallel to sequential
            processing of SQS queue messages.  Must be between 0.0 and 1.0.
@@ -414,6 +426,15 @@ Example JSON render messages:
 Some command line options are not valid and will be ignored if they appear in the render messages.  The ignored options are: `--queueUrl`, `--region`, `--maxNumberOfMessages`, `--waitTimeSeconds`, `--visibilityTimeout`, `--accessKeyId`, `--secretAccessKey`
 
 You can try out different render messages manually in the SQS Management Console by selecting your queue and then selecting 'Send a Message' from the 'Queue Actions' drop-down.
+
+
+### Deduplicating render messages from AWS SQS queue
+
+A common use-case of wkhtmltos3 is to have a web server receive requests for a particular image based on criteria that is shared among many users.  Thus, a large number of requests for the same image may occur all at once.  Even if the web server is optimized to check for the existence of an image in the CloudFront CDN or s3 first, if that specific image has not been requested yet OR if that image has just expired out of the CDN or s3 then all those threads in the web server may all add a render message into the AWS SQS queue before the wkhtmltos3 service has a chance to populate s3.  This results in a potentially large spike that may tax the resources of the server running the wkhtmltos3 service.  Additionally, duplicate renders (as defined as having identical render messages as read from the AWS SQS queue) are not needed.  If your web server thread adds the render message to the AWS SQS then polls s3 or the CDN until the image exists then only the very first image uploaded to s3 from the wkhtmltos3 service is significant.
+
+Therefore, by default, wkhtmltos3 has to ability to ignore all these duplicate requests and only process the first render message.  Any duplicate render messages read from the AWS SQS queue will be ignored for a default of 60 seconds from the initial message being read.  Additionally, if more than 500 unique render messages have been read from the queue within those 60 seconds then the 501st render message will push out the oldest message being deduplicated.
+
+These default values can be configured with the `--dedupeCacheMax` and `--dedupeCacheMaxAge` command-line options.  `--dedupeCacheMax` defaults to 500 messages.  `--dedupeCacheMaxAge` defaults to 60 seconds.  If EITHER of these options are set to `0` then the render message deduplication feature will be disabled.
 
 
 ### Limiting Memory and CPU Usage
