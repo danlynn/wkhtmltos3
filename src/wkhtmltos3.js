@@ -29,7 +29,7 @@ SYNOPSIS
    wkhtmltos3 [-q queueUrl] [--region] [--maxNumberOfMessages] 
               [--waitTimeSeconds] [--visibilityTimeout] 
               [--dedupeCacheMax] [--dedupeCacheMaxAge]
-              [-b bucket] [-k key]
+              [-b bucket] [-k key] [--cacheControl]
               [--format] [--trim] [--width] [--height]
               [--accessKeyId] [--secretAccessKey]
               [--wkhtmltoimage] [--redundant]
@@ -52,6 +52,7 @@ DESCRIPTION
    {
      "url": "http://website.com/retailers/767/coupons/28967/dynamic",
      "key": "imagecache/test/queue1.jpg",
+     "cacheControl": "no-cache"
      "trim": true,
      "imagemagick": [
        "-colorspace",
@@ -109,6 +110,10 @@ DESCRIPTION
            amazon s3 bucket destination
    -k, --key=filename
            key in amazon s3 bucket
+   --cacheControl=string
+           Set http 'Cache-Control' header on uploaded s3 object so that 
+           browsers and image proxies will always pull a fresh version.
+           (eg: 'no-cache, max-age=10')
    --format=format
            image file format (default is jpg)
    --trim
@@ -179,6 +184,7 @@ const optionDefinitions = [
   {name: 'maxCpuLoad',               type: Number}, // float between 0.0 and 1.0
   {name: 'bucket',       alias: 'b', type: String},
   {name: 'key',          alias: 'k', type: String},
+  {name: 'cacheControl',             type: String},
   {name: 'format',                   type: String},
   {name: 'trim',         alias: 't', type: Boolean},
   {name: 'redundant',                type: Boolean},// keep rendering until 2 match
@@ -342,13 +348,18 @@ function uploadToS3(imagepath, options, success, fail) {
   else if (options.format === 'gif')
     contentType = 'image/gif'
 
-  S3.putObject({
+  let params = {
     Bucket: options.bucket,
     Key: options.key,
     Body: fs.createReadStream(imagepath),
     ContentType: contentType,
     ACL: "public-read"
-  }, (error) => {
+  }
+
+  if (options.cacheControl)
+    params.CacheControl = options.cacheControl // like: 'no-cache, max-age=10'
+
+  S3.putObject(params, (error) => {
     if (error) {
       logger(options, 'error',
         `  failed: error = ${error.stack || error}\n`,
@@ -822,7 +833,7 @@ function listenOnSqsQueue(options) {
                 )
               }
               else {
-                logger(options, 'log', `receiveMessage: skipping and deleting duplicate render message`)
+                logger(options, 'log', `receiveMessage: skipping and deleting duplicate message:\n${JSON.stringify(message.Body)}`)
                 deleteMessage(data.Messages[0].ReceiptHandle)
                 remainingMessagesCount -= 1
               }

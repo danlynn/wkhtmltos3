@@ -5,7 +5,8 @@ This image will execute [wkhtmltoimage](https://wkhtmltopdf.org) to render an ht
 
 ### Supported tags and respective `Dockerfile` links
 
-+ [`1.10.0`,`latest` (1.10.0/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.10.0/Dockerfile)
++ [`1.11.0`,`latest` (1.11.0/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.11.0/Dockerfile)
++ [`1.10.0` (1.10.0/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.10.0/Dockerfile)
 + [`1.9.0` (1.9.0/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.9.0/Dockerfile)
 + [`1.8.1` (1.8.1/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.8.1/Dockerfile)
 + [`1.8.0` (1.8.0/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.8.0/Dockerfile)
@@ -87,7 +88,7 @@ SYNOPSIS
    wkhtmltos3 [-q queueUrl] [--region] [--maxNumberOfMessages] 
               [--waitTimeSeconds] [--visibilityTimeout] 
               [--dedupeCacheMax] [--dedupeCacheMaxAge]
-              [-b bucket] [-k key]
+              [-b bucket] [-k key] [--cacheControl]
               [--format] [--trim] [--width] [--height]
               [--accessKeyId] [--secretAccessKey]
               [--wkhtmltoimage] [--redundant]
@@ -110,6 +111,7 @@ DESCRIPTION
    {
      "url": "http://website.com/retailers/767/coupons/28967/dynamic",
      "key": "imagecache/test/queue1.jpg",
+     "cacheControl": "no-cache"
      "trim": true,
      "imagemagick": [
        "-colorspace",
@@ -167,6 +169,10 @@ DESCRIPTION
            amazon s3 bucket destination
    -k, --key=filename
            key in amazon s3 bucket
+   --cacheControl=string
+           Set http 'Cache-Control' header on uploaded s3 object so that 
+           browsers and image proxies will always pull a fresh version.
+           (eg: 'no-cache, max-age=10')
    --format=format
            image file format (default is jpg)
    --trim
@@ -340,7 +346,7 @@ This is a pretty minimal list.  However, wkhtmltopdf does fully support web font
 
 If you find that a significant percentage of your page renders fail to load an arbitrary static resource then you should try using the `--redundant` option.
 
-This option renders each html page into an image twice in parallel. If both image files are NOT identical then it will repeatedly render again until a newly rendered image matched any of the previously rendered images.  Gives up after 3 additional render attempts.
+This option renders each html page into an image twice in parallel. If both image files are NOT identical then it will repeatedly render again until a newly rendered image matches any of the previously rendered images.  Gives up after 3 additional render attempts.
 
 Since the initial 2 renders occur in parallel, there really isn't a time penalty for using this option since in the vast majority of cases the initial 2 renders will be identical.  The only downside is additional CPU load.  However, this additional load can often be well worth achieving nearly 100% perfect renders.
 
