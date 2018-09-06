@@ -1,7 +1,3 @@
-// TODO: support pdf in addition to image (see: https://www.npmjs.com/package/wkhtmltox)
-// TODO: switch profileLog to create and use a new instance with each renderPage() call
-
-
 const os = require('os')                              // node
 const path = require('path')                          // node
 const childProcess = require('child_process')         // node
@@ -891,3 +887,7 @@ function main() {
 
 
 main()
+
+
+// TODO: support pdf in addition to image (see: https://www.npmjs.com/package/wkhtmltox)
+// TODO: switch profileLog to create and use a new instance with each renderPage() call
