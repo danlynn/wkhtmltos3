@@ -1,7 +1,7 @@
 {
   "name": "wkhtmltos3",
-  "version": "1.11.0",
-  "description": "Retrieve webpages and render to jpg images on s3.",
+  "version": "1.12.0",
+  "description": "Render web pages as images that are uploaded to s3.",
   "main": "src/wkhtmltos3.js",
   "scripts": {
     "build": "npm install",

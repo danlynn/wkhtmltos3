@@ -106,6 +106,10 @@ DESCRIPTION
            amazon s3 bucket destination
    -k, --key=filename
            key in amazon s3 bucket
+   -p, --path=path/file.jpg
+           Destination path to write image to instead of uploading to s3.  This
+           is intended for test purposes and overrides any bucket/key that might
+           also be specified.
    --cacheControl=string
            Set http 'Cache-Control' header on uploaded s3 object so that 
            browsers and image proxies will always pull a fresh version.
@@ -180,6 +184,7 @@ const optionDefinitions = [
   {name: 'maxCpuLoad',               type: Number}, // float between 0.0 and 1.0
   {name: 'bucket',       alias: 'b', type: String},
   {name: 'key',          alias: 'k', type: String},
+  {name: 'path',         alias: 'p', type: String}, // local path (overrides bucket & key)
   {name: 'cacheControl',             type: String},
   {name: 'format',                   type: String},
   {name: 'trim',         alias: 't', type: Boolean},
@@ -208,10 +213,17 @@ function validateOptions(options) {
   let errors = []
   if (!options.url)
     errors.push('--url=URL is required')
-  if (!options.bucket)
-    errors.push('--bucket=BUCKET is required')
-  if (!options.key)
-    errors.push('--key=KEY is required')
+  if (options.path) {
+    const pathDir = path.dirname(options.path)
+    if (!fs.pathExistsSync(pathDir))
+      errors.push(`Directory '${pathDir}' does NOT exist`)
+  }
+  else {
+    if (!options.bucket)
+      errors.push('--bucket=BUCKET is required')
+    if (!options.key)
+      errors.push('--key=KEY is required')
+  }
   if (errors.length > 0) {
     console.error(`ERROR:\n  ${errors.join(`\n  `)}`)
     return false
@@ -579,8 +591,18 @@ function renderPage(options, success, fail) {
 
     const start = new Date()
     options.start = start // used by 'profileLog' in wkhtmltoimage() and uploadToS3()
-    if (options.verbose)
-      console.log(`
+    if (options.verbose) {
+      if (options.path) {
+        console.log(`
+wkhtmltos3:
+  path:        ${options.path}
+  format:      ${options.format || 'jpg'}
+  url:         ${options.url}
+  redundant:   ${options.redundant ? 'true' : 'false'}
+`)
+      }
+      else {
+        console.log(`
 wkhtmltos3:
   bucket:      ${options.bucket}
   key:         ${options.key}
@@ -588,21 +610,43 @@ wkhtmltos3:
   url:         ${options.url}
   redundant:   ${options.redundant ? 'true' : 'false'}
 `)
+      }
+    }
     let imagepath = `/tmp/${options.key}`
+    if (options.path)
+      imagepath = `/tmp/${path.basename(options.path)}`
     const renderFunc = options.redundant ? wkhtmltoimageRedundant : wkhtmltoimage
     renderFunc(options, imagepath, () => {
 
       // if called as success from imagemagickConvert then it passes the imagepath
       // of the converted image rather than the original non-converted path
       function renderSuccess(imagepath, options) {
-        uploadToS3(imagepath, options, () => {
-          const elapsed = new Date() - options.start
-          logger(options, 'log',
-            `  complete (${elapsed} ms)\n`,
-            `wkhtmltos3: success (${elapsed} ms): ${options.url} => s3:${options.bucket}:${options.key}`
-          )
-          success()
-        }, fail)
+        if (options.path) {
+          fs.move(imagepath, options.path, { overwrite: true }, (error) => {
+            if (error) {
+              logger(options, 'error', null, `    warning: failed to move image: ${error.stack || error}`)
+              fail()
+            }
+            else {
+              const elapsed = new Date() - options.start
+              logger(options, 'log',
+                `  complete (${elapsed} ms)\n`,
+                `wkhtmltos3: success (${elapsed} ms): ${options.url} => path:${options.path}`
+              )
+              success()
+            }
+          })
+        }
+        else {
+          uploadToS3(imagepath, options, () => {
+            const elapsed = new Date() - options.start
+            logger(options, 'log',
+              `  complete (${elapsed} ms)\n`,
+              `wkhtmltos3: success (${elapsed} ms): ${options.url} => s3:${options.bucket}:${options.key}`
+            )
+            success()
+          }, fail)
+        }
       }
 
       // invoke imagemagick if needed

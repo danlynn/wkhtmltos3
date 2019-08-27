@@ -5,7 +5,8 @@ This image will execute [wkhtmltoimage](https://wkhtmltopdf.org) to render an ht
 
 ### Supported tags and respective `Dockerfile` links
 
-+ [`1.11.0`,`latest` (1.11.0/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.11.0/Dockerfile)
++ [`1.12.0`,`latest` (1.12.0/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.12.0/Dockerfile)
++ [`1.11.0` (1.11.0/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.11.0/Dockerfile)
 + [`1.10.0` (1.10.0/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.10.0/Dockerfile)
 + [`1.9.0` (1.9.0/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.9.0/Dockerfile)
 + [`1.8.1` (1.8.1/Dockerfile)](https://github.com/danlynn/wkhtmltos3/blob/1.8.1/Dockerfile)
@@ -169,6 +170,10 @@ DESCRIPTION
            amazon s3 bucket destination
    -k, --key=filename
            key in amazon s3 bucket
+   -p, --path=path/file.jpg
+           Destination path to write image to instead of uploading to s3.  This
+           is intended for test purposes and overrides any bucket/key that might
+           also be specified.
    --cacheControl=string
            Set http 'Cache-Control' header on uploaded s3 object so that 
            browsers and image proxies will always pull a fresh version.
